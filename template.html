@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NT 서비스센터 — 리드타임 현황 대시보드</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<style>
+:root {
+  --bg: #f4f6f9;
+  --bg2: #ebeef3;
+  --bg3: #e2e6ed;
+  --card: #ffffff;
+  --card-hover: #f8f9fb;
+  --border: #d8dde6;
+  --border-light: #c5ccda;
+  --accent: #2563eb;
+  --accent-dim: #3b82f6;
+  --green: #059669;
+  --green-dim: #047857;
+  --red: #dc2626;
+  --red-dim: #b91c1c;
+  --amber: #d97706;
+  --amber-dim: #b45309;
+  --purple: #7c3aed;
+  --cyan: #0891b2;
+  --pink: #db2777;
+  --text: #1e293b;
+  --text-sub: #475569;
+  --text-muted: #94a3b8;
+  --mono: 'JetBrains Mono', 'Menlo', monospace;
+  --sans: 'Noto Sans KR', -apple-system, sans-serif;
+  --radius: 12px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 28px 40px 0;
+  position: sticky; top: 0; z-index: 100;
+  backdrop-filter: blur(20px);
+}
+.header-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.header-badge {
+  font-family: var(--mono); font-size: 10px; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 4px; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 8px;
+}
+.header-badge::before {
+  content: ''; display: inline-block; width: 8px; height: 8px;
+  background: var(--accent); border-radius: 2px;
+}
+.header h1 {
+  font-size: 26px; font-weight: 800; letter-spacing: -.5px;
+  background: linear-gradient(90deg, #1e293b 20%, #2563eb 80%, #0891b2 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.header-date {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 16px;
+  font-family: var(--mono); font-size: 12px; color: var(--text-sub);
+}
+.header-date .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  animation: pulse 2s ease infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* Tabs */
+.tab-nav { display: flex; align-items: center; gap: 2px; margin-top: 20px; flex-wrap: wrap; }
+.tab-btn {
+  padding: 11px 22px; border: none; cursor: pointer;
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  border-radius: 10px 10px 0 0; background: transparent;
+  color: var(--text-muted); transition: all .25s;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text-sub); background: var(--bg); }
+.tab-btn.active {
+  color: var(--accent); background: var(--card);
+  font-weight: 700; border-bottom: 2px solid var(--accent);
+}
+
+/* Main */
+.main { padding: 28px 40px 80px; max-width: 1400px; margin: 0 auto; }
+.tab-content { display: none; animation: fadeIn .4s ease; }
+.tab-content.active { display: block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+/* Cards */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px 28px; margin-bottom: 20px;
+  transition: border-color .25s;
+}
+.card:hover { border-color: var(--border-light); }
+.card-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.card-sub { font-size: 11px; color: var(--text-muted); margin-bottom: 18px; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin-bottom: 24px; }
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+  transition: all .3s; position: relative; overflow: hidden;
+}
+.kpi-card::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  opacity: 0; transition: opacity .3s;
+}
+.kpi-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+.kpi-card:hover::after { opacity: 1; }
+.kpi-label {
+  font-family: var(--mono); font-size: 9px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kpi-value { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+.kpi-unit { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
+.kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--mono); }
+.kpi-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.kpi-header-title { font-size: 14px; font-weight: 700; color: var(--text); }
+
+/* Grid */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; margin-bottom: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px; }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.data-table th {
+  padding: 12px 14px; text-align: right; color: var(--text-muted);
+  font-weight: 600; border-bottom: 1px solid var(--border-light);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap;
+  background: var(--bg2);
+}
+.data-table th:first-child { text-align: left; border-radius: 6px 0 0 0; }
+.data-table th:last-child { border-radius: 0 6px 0 0; }
+.data-table td {
+  padding: 11px 14px; text-align: right; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px;
+}
+.data-table td:first-child { text-align: left; font-family: var(--sans); font-weight: 600; }
+.data-table tr:hover { background: var(--card-hover); }
+.data-table tr.hl { background: rgba(37, 99, 235, .06); }
+.data-table tr.hl td { font-weight: 700; }
+
+/* Branch cards */
+.branch-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; cursor: pointer;
+  transition: all .3s; position: relative; overflow: hidden;
+}
+.branch-card:hover { border-color: var(--accent); transform: translateY(-3px); }
+.branch-card .branch-name { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+.branch-card .branch-ro {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 10px; border-top: 1px solid var(--border);
+}
+.branch-card .metric { text-align: center; }
+.branch-card .metric label { font-size: 9px; color: var(--text-muted); display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 1px; }
+.branch-card .metric .val { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+
+/* Rank */
+.rank-item { margin-bottom: 18px; transition: all .2s; cursor: pointer; }
+.rank-item:hover { transform: translateX(4px); }
+.rank-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.rank-left { display: flex; align-items: center; gap: 10px; }
+.rank-num { font-family: var(--mono); font-size: 13px; font-weight: 700; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--bg3); }
+.rank-name { font-size: 14px; font-weight: 600; }
+.rank-val { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+.rank-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.rank-bar-fill { height: 100%; border-radius: 3px; transition: width .8s ease; }
+
+/* Filter buttons */
+.filter-row { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 6px 16px; border-radius: 6px; border: 1px solid var(--border);
+  cursor: pointer; font-size: 11px; font-weight: 500;
+  background: transparent; color: var(--text-sub); transition: all .2s;
+}
+.filter-btn:hover { border-color: var(--accent-dim); }
+.filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.chart-box { position: relative; width: 100%; }
+.chart-box canvas { width: 100% !important; }
+
+/* Tooltip */
+.tooltip-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg3); color: var(--text-muted);
+  font-size: 10px; cursor: help; margin-left: 6px;
+  border: 1px solid var(--border);
+}
+
+/* Tab separator */
+.tab-sep { width: 1px; height: 24px; background: var(--border-light); margin: 0 10px; flex-shrink: 0; }
+.tab-btn .b-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+/* Branch detail accent */
+.branch-accent { height: 3px; border-radius: 2px; margin-bottom: 24px; }
+
+/* Heatmap */
+.hm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hm-table th { padding: 10px 12px; text-align: center; color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.hm-table th:first-child { text-align: left; }
+.hm-table td { padding: 10px 12px; text-align: center; font-family: var(--mono); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.hm-table td:first-child { text-align: left; font-family: var(--sans); font-weight: 700; }
+.hm-cell { border-radius: 4px; padding: 6px 8px; display: inline-block; min-width: 50px; }
+
+/* Compare select */
+.cmp-select {
+  padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); font-family: var(--sans);
+  font-size: 14px; font-weight: 600; cursor: pointer; outline: none;
+}
+.cmp-select:focus { border-color: var(--accent); }
+
+/* Unit toggle */
+.unit-toggle {
+  display: flex; border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; cursor: pointer; user-select: none;
+}
+.unit-opt {
+  padding: 6px 16px; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  color: var(--text-muted); transition: all .2s; white-space: nowrap;
+}
+.unit-opt.active {
+  background: var(--accent); color: #fff;
+}
+
+/* Fixed floating unit toggle - removed, now inline */
+
+@media(max-width:1100px) {
+  .kpi-row { grid-template-columns: repeat(4, 1fr); }
+  .kpi-value { font-size: 18px; }
+}
+@media(max-width:768px) {
+  .header { padding: 20px 16px 0; }
+  .main { padding: 16px 16px 40px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .kpi-card { padding: 10px 10px; }
+  .kpi-value { font-size: 16px; }
+  .kpi-label { font-size: 8px; letter-spacing: .5px; }
+  .tab-btn { padding: 8px 14px; font-size: 11.5px; }
+  .kpi-header { flex-wrap: wrap; gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-badge">NT Service Center</div>
+      <h1>서비스 리드타임 현황 대시보드</h1>
+    </div>
+    <div class="header-date"><span class="dot"></span><span>2026-04-01 10:53 기준</span></div>
+  </div>
+  <div class="tab-nav" id="tab-nav">
+    <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+    <button class="tab-btn" data-tab="branch" onclick="switchTab('branch')">리드타임별</button>
+    <button class="tab-btn" data-tab="service" onclick="switchTab('service')">서비스타입별</button>
+    <button class="tab-btn" data-tab="detail" onclick="switchTab('detail')">상세 데이터</button>
+    <button class="tab-btn" data-tab="analysis" onclick="switchTab('analysis')">심화 분석</button>
+    <div class="tab-sep"></div>
+    <button class="tab-btn" data-tab="b_전주" onclick="switchTab('b_전주')"><span class="b-dot" style="background:#2563eb"></span>전주</button>
+    <button class="tab-btn" data-tab="b_평택" onclick="switchTab('b_평택')"><span class="b-dot" style="background:#059669"></span>평택</button>
+    <button class="tab-btn" data-tab="b_군산" onclick="switchTab('b_군산')"><span class="b-dot" style="background:#d97706"></span>군산</button>
+    <button class="tab-btn" data-tab="b_목포" onclick="switchTab('b_목포')"><span class="b-dot" style="background:#7c3aed"></span>목포</button>
+    <button class="tab-btn" data-tab="b_서산" onclick="switchTab('b_서산')"><span class="b-dot" style="background:#db2777"></span>서산</button>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- TAB: Overview -->
+<div class="tab-content active" id="tab-overview">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <div class="filter-row" id="ov-section-filters" style="margin-bottom:0"></div>
+    <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt active uopt-h">시간(h)</div><div class="unit-opt uopt-d">일(d)</div></div>
+  </div>
+  <div id="ov-sec-lt">
+  <div class="kpi-header">
+    <div class="kpi-header-title">리드타임 현황 <span id="prev-month-ov" style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px"></span></div>
+  </div>
+  <div class="kpi-row" id="kpi-overview"></div>
+  </div>
+  <div id="ov-sec-ro"><div class="card" id="ro-status-card"></div></div>
+  <div id="ov-sec-rank">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">지점 랭킹 — 총 서비스 L/T</div>
+      <div class="card-sub">낮을수록 우수</div>
+      <div id="ranking-container"></div>
+    </div>
+  </div>
+  </div>
+  <div id="ov-sec-tbl">
+  <div class="card">
+    <div class="card-title">지점별 RO 건수 & 서비스 L/T 종합</div>
+    <div class="card-sub">전체 서비스(ALL) 기준</div>
+    <div style="overflow-x:auto"><table class="data-table" id="table-overview"></table></div>
+  </div>
+  </div>
+</div>
+
+<!-- TAB: Branch -->
+<div class="tab-content" id="tab-branch">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <div class="filter-row" id="br-section-filters" style="margin-bottom:0"></div>
+    <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt active uopt-h">시간(h)</div><div class="unit-opt uopt-d">일(d)</div></div>
+  </div>
+  <div id="br-sec-stack">
+  <div class="card">
+    <div class="card-title">지점별 L/T 구성 비교</div>
+    <div class="card-sub">단계별 리드타임 적층</div>
+    <div class="chart-box" style="height:360px"><canvas id="chart-branch-stack"></canvas></div>
+  </div>
+  </div>
+  <div id="br-sec-bar">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">지점별 총 서비스 L/T</div>
+      <div class="card-sub">전체 서비스 기준</div>
+      <div class="chart-box" style="height:360px"><canvas id="chart-branch-total"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">지점별 RO 발행건수</div>
+      <div class="card-sub">전체 서비스 기준</div>
+      <div class="chart-box" style="height:360px"><canvas id="chart-branch-ro"></canvas></div>
+    </div>
+  </div>
+  </div>
+  <div id="br-sec-cards">
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px" id="branch-cards-container"></div>
+  </div>
+</div>
+
+<!-- TAB: Service Type -->
+<div class="tab-content" id="tab-service">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <div class="filter-row" id="sv-section-filters" style="margin-bottom:0"></div>
+    <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt active uopt-h">시간(h)</div><div class="unit-opt uopt-d">일(d)</div></div>
+  </div>
+  <div id="sv-sec-avg">
+  <div class="card">
+    <div class="card-title">서비스타입별 평균 L/T 비교</div>
+    <div class="card-sub">전체 지점 합산 기준</div>
+    <div class="chart-box" style="height:360px"><canvas id="chart-stype-bar"></canvas></div>
+  </div>
+  </div>
+  <div id="sv-sec-detail">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">서비스타입별 RO 건수 비중</div>
+      <div class="card-sub">전체 기준</div>
+      <div class="chart-box" style="height:360px"><canvas id="chart-stype-pie"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">지점 × 서비스타입 예약 L/T</div>
+      <div class="card-sub">필터 선택으로 비교</div>
+      <div class="filter-row" id="stype-filters"></div>
+      <div class="chart-box" style="height:360px"><canvas id="chart-stype-branch"></canvas></div>
+    </div>
+  </div>
+  </div>
+  <div id="sv-sec-combined">
+  <div class="card">
+      <div class="card-title">지점별 서비스타입 상세 비교</div>
+    <div class="card-sub">5개 지점 통합 — 서비스타입별 L/T 비교</div>
+    <div class="filter-row" id="sv-combined-lt-filters"></div>
+    <div class="filter-row" id="sv-combined-branch-filters"></div>
+    <div class="chart-box" style="height:360px"><canvas id="chart-sv-combined"></canvas></div>
+    <div style="overflow-x:auto;margin-top:18px"><table class="data-table" id="tbl-sv-combined"></table></div>
+  </div>
+  </div>
+</div>
+
+<!-- TAB: Detail -->
+<div class="tab-content" id="tab-detail">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+    <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt active uopt-h">시간(h)</div><div class="unit-opt uopt-d">일(d)</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">전체 상세 데이터</div>
+    <div class="card-sub">지점별 × 서비스타입별 리드타임</div>
+    <div class="filter-row" id="branch-filters"></div>
+    <div style="overflow-x:auto"><table class="data-table" id="table-detail"></table></div>
+  </div>
+</div>
+
+<!-- Branch Detail Tabs -->
+
+<!-- TAB: Analysis -->
+<div class="tab-content" id="tab-analysis">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <div class="filter-row" id="an-section-filters" style="margin-bottom:0"></div>
+    <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt active uopt-h">시간(h)</div><div class="unit-opt uopt-d">일(d)</div></div>
+  </div>
+  <div id="an-sec-bottleneck">
+  <div class="card">
+    <div class="card-title">병목 히트맵</div>
+    <div class="card-sub">지점 × L/T 단계 — 색이 진할수록 리드타임이 긴 병목 구간</div>
+    <div id="heatmap-bottleneck"></div>
+  </div>
+  </div>
+  <div id="an-sec-cross">
+  <div class="card">
+    <div class="card-title">서비스타입 × 지점 교차 히트맵</div>
+    <div class="card-sub">서비스 L/T 기준 — 색이 진할수록 리드타임이 길어 개선 필요</div>
+    <div class="filter-row" id="heatmap-lt-filter"></div>
+    <div id="heatmap-cross"></div>
+  </div>
+  </div>
+  <div id="an-sec-compare">
+  <div class="card">
+    <div class="card-title">지점 간 1:1 비교</div>
+    <div class="card-sub">두 지점을 선택하여 L/T 단계별 직접 비교</div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <select id="cmp-a" class="cmp-select" onchange="drawCompare()"></select>
+      <span style="font-weight:700;color:var(--text-muted)">vs</span>
+      <select id="cmp-b" class="cmp-select" onchange="drawCompare()"></select>
+    </div>
+    <div class="filter-row" id="cmp-stype-filters"></div>
+    <div class="grid-2">
+      <div class="chart-box" style="height:360px"><canvas id="chart-cmp-bar"></canvas></div>
+      <div class="chart-box" style="height:360px"><canvas id="chart-cmp-radar"></canvas></div>
+    </div>
+    <div style="overflow-x:auto;margin-top:12px"><table class="data-table" id="tbl-cmp"></table></div>
+  </div>
+  </div>
+  <div id="an-sec-trend">
+  <div class="card">
+    <div class="card-title">월별 트렌드 추이</div>
+    <div class="card-sub">2024년 서비스타입별 총서비스 L/T 월간 변화 (일)</div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <select id="trend-a" class="cmp-select" onchange="drawTrend()"></select>
+      <span style="font-weight:700;color:var(--text-muted)">vs</span>
+      <select id="trend-b" class="cmp-select" onchange="drawTrend()"></select>
+    </div>
+    <div class="filter-row" id="trend-filters"></div>
+    <div class="chart-box" style="height:360px"><canvas id="chart-trend"></canvas></div>
+  </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-b_전주"><div id="bd-전주"></div></div>
+<div class="tab-content" id="tab-b_평택"><div id="bd-평택"></div></div>
+<div class="tab-content" id="tab-b_군산"><div id="bd-군산"></div></div>
+<div class="tab-content" id="tab-b_목포"><div id="bd-목포"></div></div>
+<div class="tab-content" id="tab-b_서산"><div id="bd-서산"></div></div>
+
+</div>
+
+<script>
+// ==================== DATA ====================
+const RAW = [
+  {branch:"평택",type:"ALL",ro:1492,slt:240.03,rlt:194.86,clt:2.92,colt:0.25,wlt:6.21,mlt:35.78,dlt:0.01,blt:17.99},
+  {branch:"평택",type:"Maintenance",ro:573,slt:129.18,rlt:116.22,clt:6.53,colt:0.08,wlt:1.15,mlt:5.19,dlt:0.01,blt:12.29},
+  {branch:"평택",type:"경수리",ro:103,slt:267.37,rlt:250.58,clt:0.49,colt:0.11,wlt:4.20,mlt:11.98,dlt:0.01,blt:4.24},
+  {branch:"평택",type:"중수리",ro:28,slt:320.23,rlt:255.74,clt:0.03,colt:0.06,wlt:10.13,mlt:54.27,dlt:0.01,blt:5.71},
+  {branch:"평택",type:"Recall/TC",ro:289,slt:313.48,rlt:307.49,clt:0.68,colt:0.05,wlt:1.30,mlt:3.96,dlt:0.01,blt:8.63},
+  {branch:"평택",type:"소음",ro:23,slt:1055.03,rlt:1024.63,clt:0.05,colt:0.12,wlt:0.75,mlt:29.48,dlt:0.00,blt:56.62},
+  {branch:"평택",type:"진단",ro:162,slt:300.02,rlt:223.51,clt:2.22,colt:0.42,wlt:8.89,mlt:64.96,dlt:0.02,blt:4.12},
+  {branch:"평택",type:"사고수리",ro:174,slt:175.67,rlt:13.00,clt:0.02,colt:1.22,wlt:15.01,mlt:146.42,dlt:0.01,blt:77.35},
+  {branch:"평택",type:"RITA",ro:140,slt:382.63,rlt:287.61,clt:0.03,colt:0.09,wlt:24.68,mlt:70.21,dlt:0.01,blt:9.17},
+  {branch:"서산",type:"ALL",ro:497,slt:283.38,rlt:248.04,clt:0.10,colt:0.05,wlt:6.72,mlt:28.39,dlt:0.07,blt:23.29},
+  {branch:"서산",type:"Maintenance",ro:260,slt:146.01,rlt:118.99,clt:0.19,colt:0.05,wlt:2.85,mlt:23.85,dlt:0.08,blt:32.01},
+  {branch:"서산",type:"경수리",ro:51,slt:300.88,rlt:226.68,clt:0.01,colt:0.05,wlt:19.32,mlt:54.77,dlt:0.06,blt:17.16},
+  {branch:"서산",type:"중수리",ro:11,slt:273.90,rlt:207.63,clt:0.00,colt:0.05,wlt:27.86,mlt:38.28,dlt:0.09,blt:0.01},
+  {branch:"서산",type:"Recall/TC",ro:98,slt:653.99,rlt:630.73,clt:0.00,colt:0.04,wlt:1.22,mlt:21.93,dlt:0.07,blt:12.73},
+  {branch:"서산",type:"소음",ro:1,slt:482.16,rlt:479.74,clt:0.00,colt:0.06,wlt:1.20,mlt:1.11,dlt:0.04,blt:0.00},
+  {branch:"서산",type:"진단",ro:36,slt:213.48,rlt:162.73,clt:0.00,colt:0.10,wlt:11.82,mlt:38.76,dlt:0.07,blt:19.06},
+  {branch:"서산",type:"사고수리",ro:6,slt:233.31,rlt:172.43,clt:0.02,colt:0.04,wlt:52.07,mlt:8.75,dlt:0.01,blt:15.69},
+  {branch:"서산",type:"RITA",ro:34,slt:319.40,rlt:273.86,clt:0.00,colt:0.09,wlt:13.13,mlt:32.28,dlt:0.03,blt:10.26},
+  {branch:"목포",type:"ALL",ro:544,slt:182.96,rlt:167.29,clt:1.29,colt:0.04,wlt:1.61,mlt:12.72,dlt:0.01,blt:18.07},
+  {branch:"목포",type:"Maintenance",ro:305,slt:98.62,rlt:84.72,clt:2.27,colt:0.04,wlt:2.10,mlt:9.49,dlt:0.01,blt:16.31},
+  {branch:"목포",type:"경수리",ro:30,slt:180.05,rlt:149.17,clt:0.01,colt:0.13,wlt:0.74,mlt:30.00,dlt:0.00,blt:20.58},
+  {branch:"목포",type:"중수리",ro:6,slt:251.33,rlt:245.85,clt:0.00,colt:0.07,wlt:2.30,mlt:3.11,dlt:0.00,blt:4.08},
+  {branch:"목포",type:"Recall/TC",ro:138,slt:385.50,rlt:376.12,clt:0.07,colt:0.02,wlt:1.06,mlt:8.22,dlt:0.01,blt:11.10},
+  {branch:"목포",type:"소음",ro:15,slt:112.85,rlt:98.27,clt:0.00,colt:0.04,wlt:0.91,mlt:13.45,dlt:0.18,blt:33.21},
+  {branch:"목포",type:"진단",ro:26,slt:187.11,rlt:126.21,clt:0.01,colt:0.04,wlt:0.78,mlt:60.06,dlt:0.01,blt:19.72},
+  {branch:"목포",type:"사고수리",ro:1,slt:101.01,rlt:0.00,clt:0.00,colt:0.04,wlt:1.10,mlt:99.87,dlt:0.00,blt:816.52},
+  {branch:"목포",type:"RITA",ro:23,slt:116.62,rlt:111.11,clt:0.01,colt:0.03,wlt:0.79,mlt:4.67,dlt:0.02,blt:37.27},
+  {branch:"전주",type:"ALL",ro:1878,slt:304.09,rlt:250.92,clt:3.86,colt:0.23,wlt:16.84,mlt:32.17,dlt:0.07,blt:17.90},
+  {branch:"전주",type:"Maintenance",ro:812,slt:135.66,rlt:124.05,clt:1.95,colt:0.04,wlt:1.40,mlt:8.20,dlt:0.03,blt:9.87},
+  {branch:"전주",type:"경수리",ro:241,slt:297.47,rlt:229.38,clt:2.06,colt:0.42,wlt:25.61,mlt:39.99,dlt:0.01,blt:8.58},
+  {branch:"전주",type:"중수리",ro:12,slt:410.46,rlt:316.85,clt:0.14,colt:1.84,wlt:46.51,mlt:45.12,dlt:0.01,blt:12.99},
+  {branch:"전주",type:"Recall/TC",ro:283,slt:710.81,rlt:692.40,clt:8.79,colt:0.06,wlt:1.62,mlt:7.92,dlt:0.01,blt:23.35},
+  {branch:"전주",type:"소음",ro:44,slt:1172.76,rlt:1083.93,clt:6.28,colt:0.11,wlt:15.55,mlt:66.88,dlt:0.02,blt:7.65},
+  {branch:"전주",type:"진단",ro:159,slt:360.23,rlt:222.51,clt:7.81,colt:1.11,wlt:31.58,mlt:97.21,dlt:0.01,blt:11.15},
+  {branch:"전주",type:"사고수리",ro:235,slt:167.33,rlt:20.26,clt:2.48,colt:0.30,wlt:70.25,mlt:73.64,dlt:0.41,blt:57.09},
+  {branch:"전주",type:"RITA",ro:92,slt:379.94,rlt:300.39,clt:6.37,colt:0.04,wlt:11.81,mlt:61.31,dlt:0.01,blt:13.54},
+  {branch:"군산",type:"ALL",ro:429,slt:300.34,rlt:285.27,clt:0.00,colt:0.05,wlt:2.74,mlt:12.27,dlt:0.01,blt:20.63},
+  {branch:"군산",type:"Maintenance",ro:200,slt:112.34,rlt:103.62,clt:0.01,colt:0.05,wlt:1.03,mlt:7.63,dlt:0.01,blt:21.28},
+  {branch:"군산",type:"경수리",ro:29,slt:251.88,rlt:210.10,clt:0.00,colt:0.04,wlt:16.70,mlt:25.03,dlt:0.00,blt:25.27},
+  {branch:"군산",type:"중수리",ro:11,slt:437.89,rlt:415.08,clt:0.00,colt:0.05,wlt:7.12,mlt:15.64,dlt:0.00,blt:9.01},
+  {branch:"군산",type:"Recall/TC",ro:98,slt:598.94,rlt:592.76,clt:0.00,colt:0.04,wlt:0.84,mlt:5.30,dlt:0.01,blt:16.41},
+  {branch:"군산",type:"소음",ro:4,slt:1252.48,rlt:1245.37,clt:0.00,colt:0.07,wlt:1.22,mlt:5.80,dlt:0.00,blt:1.09},
+  {branch:"군산",type:"진단",ro:21,slt:315.48,rlt:213.81,clt:0.01,colt:0.05,wlt:10.15,mlt:91.47,dlt:0.00,blt:13.84},
+  {branch:"군산",type:"RITA",ro:66,slt:362.50,rlt:355.11,clt:0.00,colt:0.04,wlt:1.63,mlt:5.71,dlt:0.00,blt:28.13},
+];
+
+const PREV_RAW = [
+  {branch:"평택",type:"ALL",ro:1132,slt:253.85,rlt:205.26,clt:1.59,colt:0.27,wlt:5.89,mlt:40.83,dlt:0.01,blt:37.06},
+  {branch:"평택",type:"Maintenance",ro:490,slt:122.21,rlt:109.91,clt:2.70,colt:0.08,wlt:1.30,mlt:8.22,dlt:0.01,blt:22.67},
+  {branch:"평택",type:"경수리",ro:76,slt:314.78,rlt:258.09,clt:0.90,colt:0.07,wlt:12.55,mlt:43.17,dlt:0.00,blt:50.36},
+  {branch:"평택",type:"중수리",ro:19,slt:244.63,rlt:199.40,clt:0.06,colt:0.11,wlt:2.89,mlt:42.17,dlt:0.01,blt:83.33},
+  {branch:"평택",type:"Recall/TC",ro:141,slt:599.35,rlt:592.50,clt:0.82,colt:0.05,wlt:1.11,mlt:4.87,dlt:0.00,blt:9.04},
+  {branch:"평택",type:"소음",ro:17,slt:825.13,rlt:798.48,clt:4.41,colt:0.09,wlt:1.29,mlt:20.85,dlt:0.00,blt:25.93},
+  {branch:"평택",type:"진단",ro:160,slt:308.12,rlt:227.19,clt:1.34,colt:0.32,wlt:12.67,mlt:66.60,dlt:0.01,blt:3.92},
+  {branch:"평택",type:"사고수리",ro:155,slt:169.61,rlt:10.39,clt:0.02,colt:1.13,wlt:12.00,mlt:146.07,dlt:0.00,blt:145.86},
+  {branch:"평택",type:"RITA",ro:74,slt:334.87,rlt:270.61,clt:0.04,colt:0.32,wlt:12.97,mlt:50.92,dlt:0.01,blt:6.57},
+  {branch:"서산",type:"ALL",ro:314,slt:277.60,rlt:232.50,clt:0.01,colt:0.06,wlt:10.42,mlt:34.28,dlt:0.33,blt:13.29},
+  {branch:"서산",type:"Maintenance",ro:185,slt:142.51,rlt:118.86,clt:0.01,colt:0.06,wlt:5.18,mlt:17.85,dlt:0.54,blt:14.87},
+  {branch:"서산",type:"경수리",ro:38,slt:309.06,rlt:244.55,clt:0.01,colt:0.05,wlt:24.28,mlt:40.15,dlt:0.02,blt:5.16},
+  {branch:"서산",type:"중수리",ro:10,slt:324.81,rlt:206.34,clt:0.00,colt:0.09,wlt:22.87,mlt:95.50,dlt:0.01,blt:0.03},
+  {branch:"서산",type:"Recall/TC",ro:37,slt:789.38,rlt:766.12,clt:0.01,colt:0.04,wlt:3.73,mlt:19.46,dlt:0.02,blt:15.13},
+  {branch:"서산",type:"소음",ro:6,slt:600.76,rlt:503.71,clt:0.00,colt:0.12,wlt:1.87,mlt:95.04,dlt:0.02,blt:0.00},
+  {branch:"서산",type:"진단",ro:23,slt:369.57,rlt:215.41,clt:0.01,colt:0.10,wlt:35.45,mlt:118.58,dlt:0.02,blt:18.88},
+  {branch:"서산",type:"사고수리",ro:1,slt:505.14,rlt:0.24,clt:0.00,colt:0.03,wlt:17.84,mlt:487.02,dlt:0.00,blt:0.00},
+  {branch:"서산",type:"RITA",ro:14,slt:285.08,rlt:238.33,clt:0.00,colt:0.05,wlt:12.71,mlt:33.98,dlt:0.01,blt:16.54},
+  {branch:"목포",type:"ALL",ro:355,slt:162.34,rlt:139.86,clt:0.01,colt:0.03,wlt:5.79,mlt:16.57,dlt:0.08,blt:14.62},
+  {branch:"목포",type:"Maintenance",ro:241,slt:119.33,rlt:101.35,clt:0.01,colt:0.03,wlt:7.29,mlt:10.62,dlt:0.02,blt:5.10},
+  {branch:"목포",type:"경수리",ro:26,slt:305.20,rlt:285.05,clt:0.00,colt:0.04,wlt:0.85,mlt:18.51,dlt:0.75,blt:8.81},
+  {branch:"목포",type:"중수리",ro:4,slt:125.62,rlt:86.87,clt:0.01,colt:0.04,wlt:9.03,mlt:29.67,dlt:0.00,blt:7.17},
+  {branch:"목포",type:"Recall/TC",ro:22,slt:552.91,rlt:547.72,clt:0.00,colt:0.01,wlt:0.44,mlt:4.73,dlt:0.00,blt:2.03},
+  {branch:"목포",type:"소음",ro:10,slt:190.87,rlt:177.15,clt:0.01,colt:0.05,wlt:0.84,mlt:12.82,dlt:0.01,blt:17.47},
+  {branch:"목포",type:"진단",ro:27,slt:126.86,rlt:76.40,clt:0.01,colt:0.03,wlt:6.74,mlt:43.63,dlt:0.05,blt:57.17},
+  {branch:"목포",type:"사고수리",ro:5,slt:278.04,rlt:75.08,clt:0.00,colt:0.03,wlt:2.32,mlt:200.61,dlt:0.00,blt:206.97},
+  {branch:"목포",type:"RITA",ro:20,slt:77.32,rlt:60.41,clt:0.00,colt:0.03,wlt:1.36,mlt:15.51,dlt:0.00,blt:45.16},
+  {branch:"전주",type:"ALL",ro:1525,slt:292.91,rlt:242.03,clt:3.28,colt:0.12,wlt:13.96,mlt:33.41,dlt:0.11,blt:17.28},
+  {branch:"전주",type:"Maintenance",ro:676,slt:121.65,rlt:111.34,clt:1.31,colt:0.05,wlt:1.07,mlt:7.84,dlt:0.04,blt:7.80},
+  {branch:"전주",type:"경수리",ro:190,slt:294.87,rlt:241.01,clt:0.03,colt:0.04,wlt:18.05,mlt:35.73,dlt:0.01,blt:16.91},
+  {branch:"전주",type:"중수리",ro:7,slt:471.45,rlt:109.85,clt:0.03,colt:0.01,wlt:26.10,mlt:335.44,dlt:0.03,blt:3.83},
+  {branch:"전주",type:"Recall/TC",ro:175,slt:743.34,rlt:714.10,clt:16.38,colt:0.09,wlt:2.56,mlt:10.20,dlt:0.01,blt:38.07},
+  {branch:"전주",type:"소음",ro:35,slt:1090.32,rlt:1027.04,clt:0.06,colt:0.12,wlt:7.59,mlt:55.51,dlt:0.01,blt:5.36},
+  {branch:"전주",type:"진단",ro:157,slt:375.22,rlt:294.08,clt:2.36,colt:0.58,wlt:13.06,mlt:65.11,dlt:0.02,blt:10.70},
+  {branch:"전주",type:"사고수리",ro:198,slt:185.46,rlt:26.09,clt:3.75,colt:0.16,wlt:68.05,mlt:86.74,dlt:0.68,blt:41.52},
+  {branch:"전주",type:"RITA",ro:87,slt:474.23,rlt:402.54,clt:1.50,colt:0.05,wlt:8.16,mlt:61.96,dlt:0.01,blt:12.50},
+  {branch:"군산",type:"ALL",ro:305,slt:235.76,rlt:221.94,clt:0.02,colt:0.05,wlt:3.01,mlt:10.72,dlt:0.02,blt:20.58},
+  {branch:"군산",type:"Maintenance",ro:173,slt:115.88,rlt:109.57,clt:0.03,colt:0.05,wlt:1.40,mlt:4.81,dlt:0.02,blt:26.12},
+  {branch:"군산",type:"경수리",ro:40,slt:214.48,rlt:196.34,clt:0.00,colt:0.04,wlt:2.48,mlt:15.60,dlt:0.02,blt:7.47},
+  {branch:"군산",type:"중수리",ro:15,slt:275.70,rlt:245.21,clt:0.00,colt:0.04,wlt:6.18,mlt:24.26,dlt:0.01,blt:7.55},
+  {branch:"군산",type:"Recall/TC",ro:18,slt:1078.43,rlt:1074.23,clt:0.00,colt:0.02,wlt:1.59,mlt:2.59,dlt:0.00,blt:18.79},
+  {branch:"군산",type:"소음",ro:2,slt:1275.52,rlt:1116.08,clt:0.00,colt:0.22,wlt:3.51,mlt:155.71,dlt:0.00,blt:15.38},
+  {branch:"군산",type:"진단",ro:27,slt:322.13,rlt:284.94,clt:0.01,colt:0.07,wlt:6.65,mlt:30.46,dlt:0.00,blt:20.07},
+  {branch:"군산",type:"사고수리",ro:3,slt:104.72,rlt:71.33,clt:0.00,colt:0.03,wlt:27.35,mlt:6.01,dlt:0.01,blt:17.44},
+  {branch:"군산",type:"RITA",ro:27,slt:302.61,rlt:286.28,clt:0.01,colt:0.05,wlt:6.91,mlt:9.32,dlt:0.05,blt:14.19},
+];
+
+const PREV_RO = {
+  total:4563, invoiced:4439, cancelled:107, incomplete:17,
+  byBranch:{
+    "전주":{total:1849,invoiced:1812,cancelled:28,incomplete:9},
+    "평택":{total:1402,invoiced:1360,cancelled:38,incomplete:4},
+    "군산":{total:416,invoiced:401,cancelled:13,incomplete:2},
+    "목포":{total:459,invoiced:446,cancelled:12,incomplete:1},
+    "서산":{total:437,invoiced:420,cancelled:16,incomplete:1},
+  }
+};
+
+const PREV_MONTH_LABEL = "2월";
+
+const BRANCHES = ["전주","평택","군산","목포","서산"];
+const BC = ["#2563eb","#059669","#d97706","#7c3aed","#db2777"];
+const STYPES = ["Maintenance","Recall/TC","경수리","중수리","소음","진단","사고수리","RITA"];
+const SC = ["#2563eb","#7c3aed","#0891b2","#db2777","#d97706","#059669","#dc2626","#ea580c"];
+
+// RO Status from RoReport
+const INC_LABELS = ["상담완료","가정산 완료","End Control 요청","정비시작","상담시작"];
+const INC_COLORS = ["#6366f1","#f59e0b","#ef4444","#0ea5e9","#94a3b8"];
+const RO_STATUS = {
+  total: 5964, invoiced: 5572, cancelled: 101, incomplete: 291,
+  incDetail: {상담완료:123,"가정산 완료":62,"End Control 요청":52,정비시작:50,상담시작:4},
+  byBranch: {
+    "전주": { total:2288, invoiced:2094, cancelled:26, incomplete:168 },
+    "평택": { total:1817, invoiced:1703, cancelled:52, incomplete:62 },
+    "군산": { total:541, invoiced:531, cancelled:2, incomplete:8 },
+    "목포": { total:686, invoiced:653, cancelled:6, incomplete:27 },
+    "서산": { total:632, invoiced:591, cancelled:15, incomplete:26 },
+  },
+  incByBranch: {
+    "전주": {상담완료:79,"가정산 완료":37,"End Control 요청":29,정비시작:20,상담시작:3},
+    "평택": {상담완료:23,"가정산 완료":8,"End Control 요청":10,정비시작:20,상담시작:1},
+    "군산": {상담완료:2,"가정산 완료":1,"End Control 요청":1,정비시작:4,상담시작:0},
+    "목포": {상담완료:13,"가정산 완료":9,"End Control 요청":4,정비시작:1,상담시작:0},
+    "서산": {상담완료:6,"가정산 완료":7,"End Control 요청":8,정비시작:5,상담시작:0},
+  },
+  byStype: {
+    "전주": {Maintenance:{inv:884,inc:23},Recall:{inv:293,inc:19},경수리:{inv:276,inc:23},중수리:{inv:11,inc:1},소음:{inv:70,inc:10},진단:{inv:224,inc:29},사고수리:{inv:219,inc:52},RITA:{inv:117,inc:11}},
+    "평택": {Maintenance:{inv:629,inc:9},Recall:{inv:308,inc:4},경수리:{inv:130,inc:2},중수리:{inv:28,inc:1},소음:{inv:38,inc:1},진단:{inv:261,inc:18},사고수리:{inv:155,inc:24},RITA:{inv:154,inc:3}},
+    "군산": {Maintenance:{inv:219,inc:2},Recall:{inv:103,inc:0},경수리:{inv:40,inc:2},중수리:{inv:16,inc:0},소음:{inv:11,inc:0},진단:{inv:48,inc:2},사고수리:{inv:0,inc:0},RITA:{inv:94,inc:2}},
+    "목포": {Maintenance:{inv:353,inc:14},Recall:{inv:145,inc:5},경수리:{inv:47,inc:3},중수리:{inv:6,inc:0},소음:{inv:22,inc:0},진단:{inv:53,inc:5},사고수리:{inv:0,inc:0},RITA:{inv:27,inc:0}},
+    "서산": {Maintenance:{inv:273,inc:6},Recall:{inv:102,inc:2},경수리:{inv:69,inc:2},중수리:{inv:12,inc:6},소음:{inv:14,inc:2},진단:{inv:68,inc:3},사고수리:{inv:6,inc:0},RITA:{inv:47,inc:5}},
+  }
+};
+
+// Helpers
+let unitMode = 'h'; // 'h' = hours, 'd' = days
+const F = (v, d=1) => v != null ? Number(v).toFixed(d) : "-";
+const FC = v => v != null ? Number(v).toLocaleString() : "-";
+const V = (v, d=1) => v != null ? (unitMode==='d' ? F(v/24, d) : F(v, d)) : "-";
+const U = () => unitMode==='d' ? '일' : '시간';
+const UU = () => unitMode==='d' ? 'd' : 'h';
+let CI = {};
+function DC(id) { if(CI[id]) { CI[id].destroy(); delete CI[id]; } }
+function getAll(branch) { return RAW.find(r => r.branch === branch && r.type === "ALL"); }
+function getSvc(branch, type) { return RAW.find(r => r.branch === branch && r.type === type); }
+function getPrevAll(branch) { return PREV_RAW.find(r => r.branch === branch && r.type === "ALL"); }
+function getPrevSvc(branch, type) { return PREV_RAW.find(r => r.branch === branch && r.type === type); }
+function cv(v) { return unitMode==='d' ? v/24 : v; } // convert value for charts
+function mom(c,p) { return p ? ((c-p)/p*100) : null; }
+function momHtml(c,p) {
+  const ch = mom(c,p);
+  if(ch===null) return '';
+  const color = ch<0?'var(--green)':ch>0?'var(--red)':'var(--text-muted)';
+  const arrow = ch<0?'▼':ch>0?'▲':'―';
+  return `<div style="margin-top:4px"><div style="font-size:8px;color:var(--text-muted);letter-spacing:.5px">전월대비 증감률</div><div style="font-family:var(--mono);font-size:10px;font-weight:600;color:${color}">${arrow} ${ch>0?'+':''}${ch.toFixed(1)}%</div></div>`;
+}
+
+// Chart.js global config
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#e2e8f0';
+Chart.defaults.font.family = "'JetBrains Mono','Noto Sans KR',sans-serif";
+Chart.defaults.font.size = 11;
+Chart.register(ChartDataLabels);
+// Default: hide datalabels, enable per chart
+Chart.defaults.plugins.datalabels = { display: false };
+
+// Reusable datalabel configs
+const DL_BAR = { display:ctx=>ctx.dataset.data[ctx.dataIndex]>0, color:'#fff', font:{size:9,weight:600}, anchor:'center', align:'center', formatter:v=>v>0?F(v,1):'' };
+const DL_STACK = { display:ctx=>{const m=ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];return m&&Math.abs(m.base-m.y)>16;}, color:'#fff', font:{size:8,weight:600}, anchor:'center', align:'center', formatter:v=>v>0?F(v,1):'' };
+const DL_HSTACK = { display:ctx=>{const m=ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];return m&&Math.abs(m.x-m.base)>30;}, color:'#fff', font:{size:8,weight:600}, anchor:'center', align:'center', formatter:v=>v>0?F(v,1):'' };
+const DL_LINE = { display:true, color:'#475569', font:{size:9,weight:600}, anchor:'end', align:'top', offset:2, formatter:v=>v!=null?F(v,1):'' };
+const DL_PIE = { display:true, color:'#fff', font:{size:10,weight:700}, formatter:v=>v>0?FC(v):'' };
+
+// Unit toggle
+function toggleUnit() {
+  unitMode = unitMode==='h' ? 'd' : 'h';
+  document.querySelectorAll('.uopt-h').forEach(el => el.classList.toggle('active', unitMode==='h'));
+  document.querySelectorAll('.uopt-d').forEach(el => el.classList.toggle('active', unitMode==='d'));
+  // Also update the overview toggle with IDs
+  const oh = document.getElementById('uopt-h'); if(oh) oh.classList.toggle('active', unitMode==='h');
+  const od = document.getElementById('uopt-d'); if(od) od.classList.toggle('active', unitMode==='d');
+  // Destroy all charts
+  Object.keys(CI).forEach(k => { CI[k].destroy(); delete CI[k]; });
+  // Re-render all
+  rendered = {};
+  renderOverview();
+  const activeTab = document.querySelector('.tab-btn.active');
+  if(activeTab) {
+    const tid = activeTab.getAttribute('data-tab');
+    if(tid !== 'overview') {
+      if(tid === 'branch') { renderBranchTab(); rendered.branch = 1; }
+      if(tid === 'service') { renderServiceTab(); rendered.service = 1; }
+      if(tid === 'detail') { renderDetailTab(); rendered.detail = 1; }
+      if(tid === 'analysis') { renderAnalysisTab(); rendered.analysis = 1; }
+      if(tid.startsWith('b_')) { const bn=tid.slice(2); renderBranchDetail(bn); rendered[tid]=1; }
+    }
+  }
+}
+
+// ==================== TABS ====================
+const TABS = ["overview","branch","service","detail","analysis","b_전주","b_평택","b_군산","b_목포","b_서산"];
+let rendered = {};
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-tab') === id));
+  TABS.forEach(t => { const el = document.getElementById('tab-' + t); if(el) el.classList.toggle('active', t === id); });
+  if(id === 'branch' && !rendered.branch) { renderBranchTab(); rendered.branch = 1; }
+  if(id === 'service' && !rendered.service) { renderServiceTab(); rendered.service = 1; }
+  if(id === 'detail' && !rendered.detail) { renderDetailTab(); rendered.detail = 1; }
+  if(id === 'analysis' && !rendered.analysis) { renderAnalysisTab(); rendered.analysis = 1; }
+  if(id.startsWith('b_')) { const bn = id.slice(2); if(!rendered[id]) { renderBranchDetail(bn); rendered[id] = 1; } }
+}
+
+// ==================== SECTION TOGGLES ====================
+const SEC_DEFS = {
+  'ov-section-filters': [
+    {k:'lt',l:'리드타임 현황',id:'ov-sec-lt'},{k:'ro',l:'RO 현황',id:'ov-sec-ro'},
+    {k:'rank',l:'지점 랭킹',id:'ov-sec-rank'},{k:'tbl',l:'지점별 RO 건수',id:'ov-sec-tbl'},
+  ],
+  'br-section-filters': [
+    {k:'stack',l:'L/T 구성 비교',id:'br-sec-stack'},{k:'bar',l:'L/T & RO 차트',id:'br-sec-bar'},
+    {k:'cards',l:'지점 카드',id:'br-sec-cards'},
+  ],
+  'sv-section-filters': [
+    {k:'avg',l:'평균 L/T 비교',id:'sv-sec-avg'},{k:'detail',l:'RO 비중 & 예약 L/T',id:'sv-sec-detail'},
+    {k:'combined',l:'지점별 상세 비교',id:'sv-sec-combined'},
+  ],
+  'an-section-filters': [
+    {k:'bottleneck',l:'병목 히트맵',id:'an-sec-bottleneck'},{k:'cross',l:'교차 히트맵',id:'an-sec-cross'},
+    {k:'compare',l:'1:1 비교',id:'an-sec-compare'},{k:'trend',l:'월별 트렌드',id:'an-sec-trend'},
+  ],
+};
+const SEC_STATE = {};
+function initSecToggle(fid) {
+  const secs = SEC_DEFS[fid]; if(!secs) return;
+  if(!SEC_STATE[fid]) SEC_STATE[fid] = new Set(secs.map(s=>s.k));
+  drawSecToggle(fid);
+}
+function drawSecToggle(fid) {
+  const secs=SEC_DEFS[fid], st=SEC_STATE[fid], el=document.getElementById(fid);
+  if(!el||!secs||!st) return;
+  el.innerHTML = `<button class="filter-btn ${st.size===secs.length?'active':''}" onclick="window._secT('${fid}','ALL')" style="font-weight:700">전체</button>` +
+    secs.map(s=>`<button class="filter-btn ${st.has(s.k)?'active':''}" onclick="window._secT('${fid}','${s.k}')">${s.l}</button>`).join('');
+  secs.forEach(s=>{const e=document.getElementById(s.id);if(e)e.style.display=st.has(s.k)?'':'none';});
+}
+window._secT = (fid, key) => {
+  const secs=SEC_DEFS[fid], st=SEC_STATE[fid];
+  if(key==='ALL'){SEC_STATE[fid]=new Set(secs.map(s=>s.k));}
+  else{if(st.has(key)&&st.size>1)st.delete(key);else if(!st.has(key))st.add(key);}
+  drawSecToggle(fid);
+};
+
+// ==================== OVERVIEW ====================
+function renderOverview() {
+  initSecToggle('ov-section-filters');
+  document.getElementById('prev-month-ov').textContent = 'vs 전월(' + PREV_MONTH_LABEL + ')';
+  // NT 전체 KPI (가중평균)
+  const allData = RAW.filter(r => r.type === "ALL");
+  const totalRO = allData.reduce((s,r) => s + r.ro, 0);
+  const wavg = (field) => allData.reduce((s,r) => s + r[field] * r.ro, 0) / totalRO;
+
+  const prevData = PREV_RAW.filter(r => r.type === "ALL");
+  const prevRO = prevData.reduce((s,r) => s + r.ro, 0);
+  const pwavg = (field) => prevData.reduce((s,r) => s + r[field] * r.ro, 0) / prevRO;
+
+  const kpis = [
+    { l: "서비스 L/T", v: V(wavg('slt'),1), u: U(), c:wavg('slt'), p:pwavg('slt') },
+    { l: "예약 L/T", v: V(wavg('rlt'),1), u: U(), c:wavg('rlt'), p:pwavg('rlt') },
+    { l: "고객대기 L/T", v: V(wavg('clt'),2), u: U(), c:wavg('clt'), p:pwavg('clt') },
+    { l: "상담 L/T", v: V(wavg('colt'),2), u: U(), c:wavg('colt'), p:pwavg('colt') },
+    { l: "정비대기 L/T", v: V(wavg('wlt'),1), u: U(), c:wavg('wlt'), p:pwavg('wlt') },
+    { l: "정비 L/T", v: V(wavg('mlt'),1), u: U(), c:wavg('mlt'), p:pwavg('mlt') },
+    { l: "출고대기 L/T", v: V(wavg('dlt'),2), u: U(), c:wavg('dlt'), p:pwavg('dlt') },
+    { l: "정산 L/T", v: V(wavg('blt'),1), u: U(), c:wavg('blt'), p:pwavg('blt') },
+  ];
+  document.getElementById('kpi-overview').innerHTML = kpis.map(k =>
+    `<div class="kpi-card"><div class="kpi-label">${k.l}</div><div><span class="kpi-value">${k.v}</span><span class="kpi-unit">${k.u}</span></div>${momHtml(k.c,k.p)}</div>`
+  ).join('');
+
+  // RO Status Card
+  const R = RO_STATUS;
+  const P = PREV_RO;
+  const invRate = (R.invoiced / R.total * 100).toFixed(1);
+  const roMomItem = (label,c,p,goodUp) => {
+    const ch=mom(c,p); if(ch===null)return'';
+    const color = goodUp ? (ch>0?'var(--green)':ch<0?'var(--red)':'var(--text-muted)') : (ch<0?'var(--green)':ch>0?'var(--red)':'var(--text-muted)');
+    const arrow = ch>0?'▲':ch<0?'▼':'―';
+    const diff = c - p;
+    return `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text-muted);min-width:90px">${label}</div>
+      <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${color}">${arrow} ${ch>0?'+':''}${ch.toFixed(1)}% <span style="font-size:12px;font-weight:500">(${diff>0?'+':''}${FC(diff)})</span></div>
+    </div>`;
+  };
+  document.getElementById('ro-status-card').innerHTML = `
+    <div class="card-title">RO 현황</div>
+    <div class="card-sub">RoReport 기준</div>
+    <div style="display:flex;gap:0;align-items:stretch">
+      <div style="flex:1;padding:8px 28px 8px 0">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">RO 건수</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px"><div style="font-size:12px;color:var(--text-muted);min-width:90px">총 RO 건수</div><div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--text)">${FC(R.total)}</div></div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px"><div style="font-size:12px;color:var(--text-muted);min-width:90px">인보이스 완료</div><div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--green)">${FC(R.invoiced)} <span style="font-size:13px;font-weight:500">(${invRate}%)</span></div></div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px"><div style="font-size:12px;color:var(--text-muted);min-width:90px">미완료 RO</div><div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--amber)">${FC(R.incomplete)} <span style="font-size:13px;font-weight:500">(${(R.incomplete/R.total*100).toFixed(1)}%)</span></div></div>
+        <div style="display:flex;align-items:baseline;gap:10px"><div style="font-size:12px;color:var(--text-muted);min-width:90px">RO 취소</div><div style="font-family:var(--mono);font-size:22px;font-weight:800;color:var(--red)">${FC(R.cancelled)} <span style="font-size:13px;font-weight:500">(${(R.cancelled/R.total*100).toFixed(1)}%)</span></div></div>
+      </div>
+      <div style="width:1px;background:var(--border);flex-shrink:0"></div>
+      <div style="flex:1;padding:8px 28px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:16px">전월대비 증감률</div>
+        ${roMomItem('총 RO',R.total,P.total,true)}
+        ${roMomItem('인보이스 완료',R.invoiced,P.invoiced,true)}
+        ${roMomItem('미완료 RO',R.incomplete,P.incomplete,false)}
+        ${roMomItem('RO 취소',R.cancelled,P.cancelled,false)}
+      </div>
+      <div style="width:1px;background:var(--border);flex-shrink:0"></div>
+      <div style="flex:1;padding:8px 0 8px 28px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:16px">미완료 상세 (${FC(R.incomplete)}건)</div>
+        ${INC_LABELS.map((lbl,i) => {
+          const cnt = R.incDetail[lbl]||0;
+          return cnt > 0 ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:5px;min-width:110px"><div style="width:8px;height:8px;border-radius:3px;background:${INC_COLORS[i]}"></div><div style="font-size:12px;color:var(--text-muted)">${lbl}</div></div>
+            <div style="font-family:var(--mono);font-size:16px;font-weight:700">${cnt}건</div>
+          </div>` : '';
+        }).join('')}
+      </div>
+    </div>
+    <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+      ${BRANCHES.map((b,i) => {
+        const br = R.byBranch[b];
+        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+          <div style="font-size:12px;font-weight:700;color:${BC[i]};margin-bottom:8px">${b}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <div><div style="font-size:9px;color:var(--text-muted)">인보이스</div><div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">${FC(br.invoiced)}</div></div>
+            <div style="text-align:center"><div style="font-size:9px;color:var(--text-muted)">미완료</div><div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--amber)">${FC(br.incomplete)}</div></div>
+            <div style="text-align:right"><div style="font-size:9px;color:var(--text-muted)">취소</div><div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--red)">${FC(br.cancelled)}</div></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  // Ranking
+  const sorted = [...BRANCHES].sort((a,b) => getAll(a).slt - getAll(b).slt);
+  const mx = Math.max(...BRANCHES.map(b => getAll(b).slt));
+  document.getElementById('ranking-container').innerHTML = sorted.map((b, i) => {
+    const d = getAll(b), ci = BRANCHES.indexOf(b);
+    return `<div class="rank-item" onclick="switchTab('b_${b}')">
+      <div class="rank-header">
+        <div class="rank-left">
+          <span class="rank-num" style="color:${i===0?'var(--green)':'var(--text)'};background:${i===0?'rgba(5,150,105,.1)':'var(--bg3)'}">#${i+1}</span>
+          <span class="rank-name" style="color:${BC[ci]}">${b}</span>
+        </div>
+        <span class="rank-val">${V(d.slt,1)}<span style="font-size:11px;color:var(--text-muted);margin-left:4px">${UU()}</span></span>
+      </div>
+      <div class="rank-bar"><div class="rank-bar-fill" style="width:${d.slt/mx*100}%;background:linear-gradient(90deg,${BC[ci]},${BC[ci]}44)"></div></div>
+    </div>`;
+  }).join('');
+
+  // Overview table
+  const heads = ["지점","RO건수","서비스L/T","예약L/T","고객대기","상담","정비대기","정비L/T","출고대기","정산L/T"];
+  const allRows = BRANCHES.map(b => getAll(b));
+  const totalRow = {
+    branch:'NT 전체', ro:totalRO,
+    slt:wavg('slt'), rlt:wavg('rlt'), clt:wavg('clt'), colt:wavg('colt'),
+    wlt:wavg('wlt'), mlt:wavg('mlt'), dlt:wavg('dlt'), blt:wavg('blt')
+  };
+  const rows = [...allRows.map(r=>({...r})), totalRow];
+  document.getElementById('table-overview').innerHTML =
+    `<thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>` +
+    rows.map((r,i) => {
+      const isT = i === rows.length-1;
+      return `<tr class="${isT?'hl':''}">
+        <td style="font-weight:${isT?700:500};color:${isT?'var(--accent)':BC[BRANCHES.indexOf(r.branch)]||'var(--text)'}">${r.branch}</td>
+        <td>${FC(r.ro)}</td><td style="font-weight:700">${V(r.slt)}</td><td>${V(r.rlt)}</td>
+        <td>${V(r.clt,2)}</td><td>${V(r.colt,2)}</td><td>${V(r.wlt)}</td>
+        <td>${V(r.mlt)}</td><td>${V(r.dlt,2)}</td><td>${V(r.blt)}</td></tr>`;
+    }).join('') + '</tbody>';
+}
+
+// ==================== BRANCH TAB ====================
+function renderBranchTab() {
+  initSecToggle('br-section-filters');
+  // Stacked bar
+  CI['branchStack'] = new Chart(document.getElementById('chart-branch-stack'), {
+    type:'bar',
+    data:{
+      labels:BRANCHES,
+      datasets:[
+        {label:'예약 L/T',data:BRANCHES.map(b=>cv(getAll(b).rlt)),backgroundColor:'#2563eb'},
+        {label:'고객대기 L/T',data:BRANCHES.map(b=>cv(getAll(b).clt)),backgroundColor:'#0891b2'},
+        {label:'상담 L/T',data:BRANCHES.map(b=>cv(getAll(b).colt)),backgroundColor:'#64748b'},
+        {label:'정비대기 L/T',data:BRANCHES.map(b=>cv(getAll(b).wlt)),backgroundColor:'#d97706'},
+        {label:'정비 L/T',data:BRANCHES.map(b=>cv(getAll(b).mlt)),backgroundColor:'#7c3aed'},
+        {label:'출고대기 L/T',data:BRANCHES.map(b=>cv(getAll(b).dlt)),backgroundColor:'#ea580c'},
+        {label:'정산 L/T',data:BRANCHES.map(b=>cv(getAll(b).blt)),backgroundColor:'#059669'},
+      ]
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{stacked:true,ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}},
+        y:{stacked:true,ticks:{color:'#64748b',font:{size:12}},grid:{display:false}}
+      },
+      plugins:{legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'rect',padding:12}},datalabels:DL_HSTACK}
+    }
+  });
+
+  // Total L/T bar
+  CI['branchTotal'] = new Chart(document.getElementById('chart-branch-total'), {
+    type:'bar',
+    data:{
+      labels:BRANCHES,
+      datasets:[{data:BRANCHES.map(b=>cv(getAll(b).slt)),backgroundColor:BC,borderRadius:6,barThickness:36}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:{color:'#64748b',font:{size:12}},grid:{display:false}}, y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}} },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>F(ctx.raw,1)+' '+U()}},datalabels:{...DL_BAR,color:'#fff',font:{size:10,weight:700}}}
+    }
+  });
+
+  // RO count bar
+  CI['branchRo'] = new Chart(document.getElementById('chart-branch-ro'), {
+    type:'bar',
+    data:{
+      labels:BRANCHES,
+      datasets:[{data:BRANCHES.map(b=>getAll(b).ro),backgroundColor:BC.map(c=>c+'88'),borderColor:BC,borderWidth:1,borderRadius:6,barThickness:36}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:{color:'#64748b',font:{size:12}},grid:{display:false}}, y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}} },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>FC(ctx.raw)+' 건'}},datalabels:{display:true,color:'#475569',font:{size:10,weight:700},anchor:'end',align:'top',offset:2,formatter:v=>FC(v)}}
+    }
+  });
+
+  // Branch cards
+  document.getElementById('branch-cards-container').innerHTML = BRANCHES.map((b, i) => {
+    const d = getAll(b);
+    return `<div class="branch-card" onclick="switchTab('b_${b}')" style="padding:14px">
+      <div class="branch-name" style="color:${BC[i]};font-size:13px;margin-bottom:10px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:3px;background:${BC[i]};margin-right:6px"></span>${b}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 6px">
+        <div class="metric"><label>서비스 L/T</label><div class="val" style="color:${BC[i]};font-size:16px">${V(d.slt,1)}</div></div>
+        <div class="metric"><label>RO 건수</label><div class="val" style="font-size:16px">${FC(d.ro)}</div></div>
+        <div class="metric"><label>예약</label><div class="val" style="font-size:14px">${V(d.rlt,1)}</div></div>
+        <div class="metric"><label>고객대기</label><div class="val" style="font-size:14px">${V(d.clt,1)}</div></div>
+        <div class="metric"><label>상담</label><div class="val" style="font-size:14px">${V(d.colt,2)}</div></div>
+        <div class="metric"><label>정비대기</label><div class="val" style="font-size:14px">${V(d.wlt,1)}</div></div>
+        <div class="metric"><label>정비</label><div class="val" style="font-size:14px">${V(d.mlt,1)}</div></div>
+        <div class="metric"><label>출고대기</label><div class="val" style="font-size:14px">${V(d.dlt,2)}</div></div>
+        <div class="metric"><label>정산</label><div class="val" style="font-size:14px">${V(d.blt,1)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ==================== SERVICE TYPE TAB ====================
+function renderServiceTab() {
+  initSecToggle('sv-section-filters');
+  // Aggregate by service type (weighted average across branches)
+  const stypeAgg = STYPES.map(st => {
+    const rows = RAW.filter(r => r.type === st);
+    const totalRo = rows.reduce((s,r) => s+r.ro, 0);
+    if(totalRo === 0) return {type:st,ro:0,slt:0,rlt:0,clt:0,colt:0,wlt:0,mlt:0,dlt:0,blt:0};
+    const wavg = f => rows.reduce((s,r) => s+r[f]*r.ro,0)/totalRo;
+    return {type:st,ro:totalRo,slt:wavg('slt'),rlt:wavg('rlt'),clt:wavg('clt'),colt:wavg('colt'),wlt:wavg('wlt'),mlt:wavg('mlt'),dlt:wavg('dlt'),blt:wavg('blt')};
+  }).sort((a,b) => b.slt - a.slt);
+
+  // Horizontal bar
+  CI['stypeBar'] = new Chart(document.getElementById('chart-stype-bar'), {
+    type:'bar',
+    data:{
+      labels:stypeAgg.map(s=>s.type),
+      datasets:[
+        {label:'예약 L/T',data:stypeAgg.map(s=>cv(s.rlt)),backgroundColor:'#2563eb'},
+        {label:'고객대기 L/T',data:stypeAgg.map(s=>cv(s.clt)),backgroundColor:'#0891b2'},
+        {label:'상담 L/T',data:stypeAgg.map(s=>cv(s.colt)),backgroundColor:'#64748b'},
+        {label:'정비대기 L/T',data:stypeAgg.map(s=>cv(s.wlt)),backgroundColor:'#d97706'},
+        {label:'정비 L/T',data:stypeAgg.map(s=>cv(s.mlt)),backgroundColor:'#7c3aed'},
+        {label:'출고대기 L/T',data:stypeAgg.map(s=>cv(s.dlt)),backgroundColor:'#ea580c'},
+        {label:'정산 L/T',data:stypeAgg.map(s=>cv(s.blt)),backgroundColor:'#059669'},
+      ]
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{stacked:true,ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}},
+        y:{stacked:true,ticks:{color:'#64748b',font:{size:11}},grid:{display:false}}
+      },
+      plugins:{legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'rect',padding:12}},datalabels:DL_HSTACK}
+    }
+  });
+
+  // Pie
+  const totalAll = stypeAgg.reduce((s,r) => s+r.ro, 0);
+  CI['stypePie'] = new Chart(document.getElementById('chart-stype-pie'), {
+    type:'doughnut',
+    data:{
+      labels:stypeAgg.map(s=>`${s.type} (${(s.ro/totalAll*100).toFixed(1)}%)`),
+      datasets:[{data:stypeAgg.map(s=>s.ro),backgroundColor:SC,borderWidth:0,cutout:'55%'}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#64748b',font:{size:10},usePointStyle:true,pointStyle:'circle',padding:10}},datalabels:DL_PIE}
+    }
+  });
+
+  // Branch × Service type filter chart
+  let curStype = "Maintenance";
+  function drawStypeBranch() {
+    document.getElementById('stype-filters').innerHTML = STYPES.map(s =>
+      `<button class="filter-btn ${curStype===s?'active':''}" onclick="window._stf('${s}')">${s}</button>`
+    ).join('');
+    DC('stypeBranch');
+    CI['stypeBranch'] = new Chart(document.getElementById('chart-stype-branch'), {
+      type:'bar',
+      data:{
+        labels:BRANCHES,
+        datasets:[{
+          label: curStype + ' 예약 L/T',
+          data:BRANCHES.map(b => { const r = getSvc(b,curStype); return r ? cv(r.rlt) : 0; }),
+          backgroundColor:BC, borderRadius:6, barThickness:32
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{ x:{ticks:{color:'#64748b',font:{size:12}},grid:{display:false}}, y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}} },
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>F(ctx.raw,1)+' '+U()}},datalabels:{...DL_BAR,color:'#fff',font:{size:10,weight:700}}}
+      }
+    });
+  }
+  window._stf = s => { curStype = s; drawStypeBranch(); };
+  drawStypeBranch();
+
+  // === Combined Branch × Service Type Chart ===
+  const cmbLtFields = [
+    {k:'slt',l:'총서비스 L/T',c:'#1a4fa0'},{k:'rlt',l:'예약 L/T',c:'#3b7dd8'},
+    {k:'wlt',l:'정비대기 L/T',c:'#7baaf0'},{k:'mlt',l:'정비 L/T',c:'#a8c8f0'},
+    {k:'blt',l:'정산 L/T',c:'#d0e2f8'},
+  ];
+  const cmbStypes = ["ALL",...STYPES];
+  if(!window._cmbLt) window._cmbLt = new Set(cmbLtFields.map(f=>f.k));
+  if(!window._cmbBr) window._cmbBr = new Set(BRANCHES);
+
+  function drawCombined() {
+    // LT filter buttons
+    document.getElementById('sv-combined-lt-filters').innerHTML =
+      `<span style="font-size:10px;color:var(--text-muted);margin-right:6px">L/T 항목:</span>` +
+      `<button class="filter-btn ${window._cmbLt.size===cmbLtFields.length?'active':''}" onclick="window._cmbF('lt','ALL')" style="font-weight:700">전체</button>` +
+      cmbLtFields.map(f =>
+        `<button class="filter-btn ${window._cmbLt.has(f.k)?'active':''}" onclick="window._cmbF('lt','${f.k}')" style="border-left:3px solid ${f.c}">${f.l}</button>`
+      ).join('');
+
+    // Branch filter buttons
+    document.getElementById('sv-combined-branch-filters').innerHTML =
+      `<span style="font-size:10px;color:var(--text-muted);margin-right:6px">지점:</span>` +
+      `<button class="filter-btn ${window._cmbBr.size===BRANCHES.length?'active':''}" onclick="window._cmbF('br','ALL')" style="font-weight:700">전체</button>` +
+      BRANCHES.map((b,i) =>
+        `<button class="filter-btn ${window._cmbBr.has(b)?'active':''}" onclick="window._cmbF('br','${b}')" style="border-left:3px solid ${BC[i]}">${b}</button>`
+      ).join('');
+
+    // Build datasets: one dataset per (branch × lt field)
+    DC('svCombined');
+    const activeBr = BRANCHES.filter(b => window._cmbBr.has(b));
+    const activeLt = cmbLtFields.filter(f => window._cmbLt.has(f.k));
+    const datasets = [];
+    activeBr.forEach((b,bi) => {
+      activeLt.forEach((f,fi) => {
+        datasets.push({
+          label: `${b} — ${f.l}`,
+          data: cmbStypes.map(st => {
+            const r = st==='ALL' ? getAll(b) : getSvc(b,st);
+            return r ? cv(r[f.k]) : 0;
+          }),
+          backgroundColor: f.c,
+          borderRadius: 2,
+        });
+      });
+    });
+
+    CI['svCombined'] = new Chart(document.getElementById('chart-sv-combined'), {
+      type:'bar',
+      data:{ labels:cmbStypes, datasets },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ticks:{color:'#475569',font:{size:11}},grid:{display:false}},
+          y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}
+        },
+        plugins:{
+          legend:{display:false},
+          datalabels:{
+            display:ctx=>ctx.dataset.data[ctx.dataIndex]>0 && datasets.length<=10,
+            color:'#475569',font:{size:7,weight:600},
+            anchor:'end',align:'top',offset:1,
+            rotation: datasets.length>5?-90:0,
+            formatter:v=>v>0?F(v,1):''
+          }
+        }
+      }
+    });
+
+    // Table
+    const tblHeads = ['','...서비스타입'].concat(cmbStypes);
+    const tblEl = document.getElementById('tbl-sv-combined');
+    let tblHtml = `<thead><tr><th>지점</th><th>L/T 항목</th>${cmbStypes.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>`;
+    activeBr.forEach((b,bi) => {
+      const ci = BRANCHES.indexOf(b);
+      activeLt.forEach((f,fi) => {
+        const isFirst = fi===0;
+        const d = f.k==='clt'||f.k==='colt'||f.k==='dlt'?2:1;
+        tblHtml += `<tr>`;
+        if(isFirst) tblHtml += `<td style="color:${BC[ci]};font-weight:700" rowspan="${activeLt.length}">${b}</td>`;
+        tblHtml += `<td style="font-weight:500">${f.l}</td>`;
+        tblHtml += cmbStypes.map(st => {
+          const r = st==='ALL' ? getAll(b) : getSvc(b,st);
+          return `<td>${r ? V(r[f.k],d) : '-'}</td>`;
+        }).join('');
+        tblHtml += '</tr>';
+      });
+    });
+    tblHtml += '</tbody>';
+    tblEl.innerHTML = tblHtml;
+  }
+
+  window._cmbF = (type, key) => {
+    if(type==='lt') {
+      if(key==='ALL') window._cmbLt = new Set(cmbLtFields.map(f=>f.k));
+      else { if(window._cmbLt.has(key)&&window._cmbLt.size>1) window._cmbLt.delete(key); else if(!window._cmbLt.has(key)) window._cmbLt.add(key); }
+    } else {
+      if(key==='ALL') window._cmbBr = new Set(BRANCHES);
+      else { if(window._cmbBr.has(key)&&window._cmbBr.size>1) window._cmbBr.delete(key); else if(!window._cmbBr.has(key)) window._cmbBr.add(key); }
+    }
+    drawCombined();
+  };
+  drawCombined();
+}
+
+// ==================== DETAIL TAB ====================
+function renderDetailTab() {
+  let curBranch = "ALL";
+  function drawDetail() {
+    document.getElementById('branch-filters').innerHTML =
+      `<button class="filter-btn ${curBranch==='ALL'?'active':''}" onclick="window._bf('ALL')">전체</button>` +
+      BRANCHES.map(b => `<button class="filter-btn ${curBranch===b?'active':''}" onclick="window._bf('${b}')">${b}</button>`).join('');
+    const filtered = curBranch === 'ALL' ? RAW : RAW.filter(r => r.branch === curBranch);
+    const heads = ["지점","서비스타입","RO건수","서비스L/T","예약L/T","고객대기","상담","정비대기","정비L/T","출고대기","정산L/T"];
+    document.getElementById('table-detail').innerHTML =
+      `<thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>` +
+      filtered.map(r => {
+        const isAll = r.type === 'ALL';
+        const ci = BRANCHES.indexOf(r.branch);
+        return `<tr class="${isAll?'hl':''}">
+          <td style="color:${BC[ci]||'var(--text)'}">${r.branch}</td>
+          <td style="font-weight:${isAll?700:400}">${r.type}</td>
+          <td>${FC(r.ro)}</td>
+          <td style="font-weight:${isAll?700:400}">${V(r.slt)}</td>
+          <td>${V(r.rlt)}</td><td>${V(r.clt,2)}</td><td>${V(r.colt,2)}</td>
+          <td>${V(r.wlt)}</td><td>${V(r.mlt)}</td><td>${V(r.dlt,2)}</td><td>${V(r.blt)}</td></tr>`;
+      }).join('') + '</tbody>';
+  }
+  window._bf = b => { curBranch = b; drawDetail(); };
+  drawDetail();
+}
+
+// ==================== ANALYSIS TAB ====================
+// Monthly trend data (from NT report, in days)
+const TREND_DATA = {
+  months:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+  series:[
+    {type:"Maintenance",v:[4.26,6.72,4.10,4.76,4.22,4.86,4.27,3.73,3.38,3.35,3.47,4.12]},
+    {type:"Recall/TC",v:[6.53,10.80,10.68,13.19,10.97,11.31,7.88,8.56,8.42,8.88,6.70,7.66]},
+    {type:"경수리",v:[6.99,7.83,9.34,12.88,8.51,8.23,8.81,8.08,6.75,5.11,5.75,7.03]},
+    {type:"소음",v:[16.25,15.97,17.10,16.64,12.59,12.88,11.91,12.29,10.77,11.74,11.51,13.07]},
+    {type:"중수리",v:[12.31,12.70,8.73,11.97,11.72,10.36,11.13,10.93,8.23,5.28,10.03,13.76]},
+    {type:"진단",v:[7.35,8.10,6.67,7.42,6.83,6.72,6.19,6.17,4.69,5.45,5.34,7.34]},
+    {type:"사고수리",v:[7.38,6.19,0.25,6.57,6.32,5.83,6.20,5.96,0.59,4.20,5.17,12.27]},
+    {type:"RITA",v:[null,null,null,null,null,null,null,null,7.22,6.26,8.01,9.52]},
+  ]
+};
+const TREND_COLORS = ["#2563eb","#7c3aed","#0891b2","#d97706","#db2777","#059669","#dc2626","#ea580c"];
+
+function renderAnalysisTab() {
+  initSecToggle('an-section-filters');
+  // === 1. Bottleneck Heatmap ===
+  const ltStages = [{k:'rlt',l:'예약'},{k:'clt',l:'고객대기'},{k:'colt',l:'상담'},{k:'wlt',l:'정비대기'},{k:'mlt',l:'정비'},{k:'dlt',l:'출고대기'},{k:'blt',l:'정산'}];
+  const hmData = BRANCHES.map(b => {
+    const d = getAll(b);
+    return ltStages.map(s => d[s.k]);
+  });
+  const allVals = hmData.flat();
+  const hmMax = Math.max(...allVals);
+  function hmColor(v) {
+    const ratio = Math.min(v / (hmMax * 0.3), 1);
+    const r = Math.round(220 + ratio * 35);
+    const g = Math.round(230 - ratio * 180);
+    const b2 = Math.round(240 - ratio * 200);
+    return `rgb(${r},${g},${b2})`;
+  }
+  function hmText(v) { return v / hmMax > 0.15 ? 'var(--text)' : 'var(--text-muted)'; }
+  document.getElementById('heatmap-bottleneck').innerHTML =
+    `<table class="hm-table"><thead><tr><th></th>${ltStages.map(s=>`<th>${s.l}</th>`).join('')}</tr></thead><tbody>` +
+    BRANCHES.map((b,bi) =>
+      `<tr><td style="color:${BC[bi]}">${b}</td>` +
+      ltStages.map((s,si) => {
+        const val = hmData[bi][si];
+        return `<td><span class="hm-cell" style="background:${hmColor(val)};color:${hmText(val)}">${V(val,1)}</span></td>`;
+      }).join('') + '</tr>'
+    ).join('') + '</tbody></table>';
+
+  // === 2. Cross Heatmap (Service Type × Branch) ===
+  const crossFields = [{k:'slt',l:'서비스 L/T'},{k:'rlt',l:'예약 L/T'},{k:'mlt',l:'정비 L/T'},{k:'blt',l:'정산 L/T'}];
+  let crossField = 'slt';
+  function drawCross() {
+    document.getElementById('heatmap-lt-filter').innerHTML = crossFields.map(f =>
+      `<button class="filter-btn ${crossField===f.k?'active':''}" onclick="window._cf2('${f.k}')">${f.l}</button>`
+    ).join('');
+    const crossTypes = STYPES;
+    const cData = crossTypes.map(st => BRANCHES.map(b => {
+      const r = getSvc(b, st);
+      return r ? r[crossField] : null;
+    }));
+    const cVals = cData.flat().filter(v=>v!=null);
+    const cMax = Math.max(...cVals);
+    function cColor(v) {
+      if(v==null) return 'var(--bg3)';
+      const ratio = Math.min(v / (cMax * 0.4), 1);
+      const r = Math.round(220 + ratio * 35);
+      const g = Math.round(230 - ratio * 180);
+      const b2 = Math.round(240 - ratio * 200);
+      return `rgb(${r},${g},${b2})`;
+    }
+    document.getElementById('heatmap-cross').innerHTML =
+      `<table class="hm-table"><thead><tr><th></th>${BRANCHES.map((b,i)=>`<th style="color:${BC[i]}">${b}</th>`).join('')}</tr></thead><tbody>` +
+      crossTypes.map((st,si) =>
+        `<tr><td>${st}</td>` +
+        BRANCHES.map((b,bi) => {
+          const val = cData[si][bi];
+          return `<td><span class="hm-cell" style="background:${cColor(val)}">${val!=null?V(val,1):'-'}</span></td>`;
+        }).join('') + '</tr>'
+      ).join('') + '</tbody></table>';
+  }
+  window._cf2 = k => { crossField = k; drawCross(); };
+  drawCross();
+
+  // === 3. Branch 1:1 Compare ===
+  const selA = document.getElementById('cmp-a');
+  const selB = document.getElementById('cmp-b');
+  const cmpBrOpts = ['NT 전체',...BRANCHES];
+  selA.innerHTML = cmpBrOpts.map((b,i) => `<option value="${b}" ${i===1?'selected':''}>${b}</option>`).join('');
+  selB.innerHTML = cmpBrOpts.map((b,i) => `<option value="${b}" ${i===2?'selected':''}>${b}</option>`).join('');
+  function getNtAll(type) {
+    const rows = RAW.filter(r => r.type === type);
+    if(rows.length===0) return null;
+    const totalRo = rows.reduce((s,r)=>s+r.ro,0);
+    const wa = f => rows.reduce((s,r)=>s+r[f]*r.ro,0)/totalRo;
+    return {branch:'NT 전체',type,ro:totalRo,slt:wa('slt'),rlt:wa('rlt'),clt:wa('clt'),colt:wa('colt'),wlt:wa('wlt'),mlt:wa('mlt'),dlt:wa('dlt'),blt:wa('blt')};
+  }
+  function getCmpData(br, st) {
+    if(br==='NT 전체') return getNtAll(st==='ALL'?'ALL':st);
+    return st==='ALL' ? getAll(br) : getSvc(br, st);
+  }
+  function getCmpColor(br) {
+    if(br==='NT 전체') return '#475569';
+    return BC[BRANCHES.indexOf(br)] || '#475569';
+  }
+  const cmpStypes = ["ALL",...STYPES];
+  let cmpStype = "ALL";
+  function renderCmpFilters() {
+    document.getElementById('cmp-stype-filters').innerHTML = cmpStypes.map(s =>
+      `<button class="filter-btn ${cmpStype===s?'active':''}" onclick="window._csf('${s}')">${s}</button>`
+    ).join('');
+  }
+  window._csf = s => { cmpStype = s; renderCmpFilters(); drawCompare(); };
+  window.drawCompare = function() {
+    renderCmpFilters();
+    const a = selA.value, b = selB.value;
+    const dA = getCmpData(a, cmpStype);
+    const dB = getCmpData(b, cmpStype);
+    const colA = getCmpColor(a), colB = getCmpColor(b);
+    const fields = [{k:'slt',l:'서비스 L/T'},{k:'rlt',l:'예약'},{k:'clt',l:'고객대기'},{k:'colt',l:'상담'},{k:'wlt',l:'정비대기'},{k:'mlt',l:'정비'},{k:'dlt',l:'출고대기'},{k:'blt',l:'정산'}];
+    const hasA = !!dA, hasB = !!dB;
+    const gv = (d,k) => d ? d[k] : 0;
+    DC('cmpBar'); DC('cmpRadar');
+    CI['cmpBar'] = new Chart(document.getElementById('chart-cmp-bar'), {
+      type:'bar',
+      data:{
+        labels:fields.map(f=>f.l),
+        datasets:[
+          {label:a,data:fields.map(f=>cv(gv(dA,f.k))),backgroundColor:colA,borderRadius:4,barThickness:14},
+          {label:b,data:fields.map(f=>cv(gv(dB,f.k))),backgroundColor:colB,borderRadius:4,barThickness:14},
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        scales:{x:{ticks:{color:'#64748b',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}},
+        plugins:{legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'rect',padding:12}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+F(ctx.raw,1)+' '+U()}},datalabels:{...DL_BAR,font:{size:8,weight:600}}}
+      }
+    });
+    const radarF = fields.slice(1);
+    CI['cmpRadar'] = new Chart(document.getElementById('chart-cmp-radar'), {
+      type:'radar',
+      data:{
+        labels:radarF.map(f=>f.l),
+        datasets:[
+          {label:a,data:radarF.map(f=>cv(gv(dA,f.k))),borderColor:colA,backgroundColor:colA+'20',borderWidth:2,pointRadius:3,pointBackgroundColor:colA},
+          {label:b,data:radarF.map(f=>cv(gv(dB,f.k))),borderColor:colB,backgroundColor:colB+'20',borderWidth:2,pointRadius:3,pointBackgroundColor:colB},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,scales:{r:{ticks:{color:'#94a3b8',font:{size:9},backdropColor:'#ffffff'},grid:{color:'#e2e8f0'},pointLabels:{color:'#64748b',font:{size:11}}}},plugins:{legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'circle',padding:12}}}}
+    });
+    // Compare table
+    const noData = '<td style="color:var(--text-muted)">-</td>';
+    document.getElementById('tbl-cmp').innerHTML =
+      `<thead><tr><th></th>${fields.map(f=>`<th>${f.l}</th>`).join('')}<th>RO건수</th></tr></thead><tbody>` +
+      `<tr><td style="color:${colA};font-weight:700">${a}</td>${hasA ? fields.map(f=>`<td>${V(dA[f.k],1)}</td>`).join('')+'<td>'+FC(dA.ro)+'</td>' : fields.map(()=>noData).join('')+noData}</tr>` +
+      `<tr><td style="color:${colB};font-weight:700">${b}</td>${hasB ? fields.map(f=>`<td>${V(dB[f.k],1)}</td>`).join('')+'<td>'+FC(dB.ro)+'</td>' : fields.map(()=>noData).join('')+noData}</tr>` +
+      `<tr class="hl"><td>차이</td>${(hasA&&hasB) ? fields.map(f=>{const diff=dA[f.k]-dB[f.k];return `<td style="color:${diff>0?'var(--red)':diff<0?'var(--green)':'var(--text-muted)'};font-weight:700">${diff>0?'+':''}${V(diff,1)}</td>`;}).join('')+`<td style="font-weight:700">${dA.ro-dB.ro>0?'+':''}${FC(dA.ro-dB.ro)}</td>` : fields.map(()=>noData).join('')+noData}</tr>` +
+      '</tbody>';
+  };
+  drawCompare();
+
+  // === 4. Monthly Trend ===
+  const trendSelA = document.getElementById('trend-a');
+  const trendSelB = document.getElementById('trend-b');
+  const trendBrOpts = ['NT 전체',...BRANCHES];
+  trendSelA.innerHTML = trendBrOpts.map((b,i) => `<option value="${b}" ${i===0?'selected':''}>${b}</option>`).join('');
+  trendSelB.innerHTML = trendBrOpts.map((b,i) => `<option value="${b}" ${i===1?'selected':''}>${b}</option>`).join('');
+
+  let trendActive = new Set(["Maintenance","소음","중수리","진단"]);
+  window.drawTrend = function() {
+    document.getElementById('trend-filters').innerHTML = TREND_DATA.series.map((s,i) =>
+      `<button class="filter-btn ${trendActive.has(s.type)?'active':''}" onclick="window._tf('${s.type}')">${s.type}</button>`
+    ).join('');
+    DC('trend');
+
+    const brA = trendSelA.value, brB = trendSelB.value;
+    const ds = [];
+
+    // NT 전체 trend lines (solid)
+    if(brA==='NT 전체'||brB==='NT 전체') {
+      TREND_DATA.series.filter(s=>trendActive.has(s.type)).forEach(s => {
+        const oi = TREND_DATA.series.indexOf(s);
+        ds.push({label:'NT — '+s.type,data:s.v,borderColor:TREND_COLORS[oi],backgroundColor:TREND_COLORS[oi]+'18',borderWidth:2,pointRadius:3,pointBackgroundColor:TREND_COLORS[oi],tension:.3,spanGaps:true});
+      });
+    }
+
+    // Branch lines (전월→현월, dashed)
+    [brA,brB].forEach(br => {
+      if(br==='NT 전체') return;
+      const ci = BRANCHES.indexOf(br);
+      if(ci<0) return;
+      const stList = STYPES.filter(st=>trendActive.has(st));
+      stList.forEach((st,si) => {
+        const prev = getPrevSvc(br,st), curr = getSvc(br,st);
+        const pv = prev ? prev.slt/24 : null;
+        const cv2 = curr ? curr.slt/24 : null;
+        const monthData = new Array(12).fill(null);
+        monthData[10] = pv; // Nov = prev month proxy
+        monthData[11] = cv2; // Dec = current month proxy
+        const oi = TREND_DATA.series.findIndex(s=>s.type===st);
+        const clr = oi>=0?TREND_COLORS[oi]:BC[ci];
+        ds.push({
+          label:`${br} — ${st}`,
+          data:monthData,
+          borderColor:clr,backgroundColor:'transparent',
+          borderWidth:2,borderDash:[6,3],
+          pointRadius:ctx=>ctx.raw!=null?5:0,
+          pointBackgroundColor:clr,
+          pointStyle: ci===0?'circle':'rectRot',
+          tension:0, spanGaps:true
+        });
+      });
+    });
+
+    const subtitle = [brA,brB].filter(b=>b!=='NT 전체').length > 0
+      ? '실선: NT 전체 (월별) · 점선: 지점별 (전월→현월)' : '';
+
+    CI['trend'] = new Chart(document.getElementById('chart-trend'), {
+      type:'line',
+      data:{labels:TREND_DATA.months,datasets:ds},
+      options:{responsive:true,maintainAspectRatio:false,
+        scales:{x:{ticks:{color:'#64748b',font:{size:11}},grid:{color:'#e2e8f0'}},y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}},
+        plugins:{legend:{labels:{color:'#64748b',font:{size:10},usePointStyle:true,padding:10}},
+          tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.raw!=null?F(ctx.raw,2):'-')+' 일'}},
+          datalabels:{display:ctx=>ctx.raw!=null,color:'#475569',font:{size:8,weight:600},anchor:'end',align:'top',offset:2,formatter:v=>v!=null?F(v,1):''}
+        }
+      }
+    });
+  };
+  window._tf = t => { trendActive.has(t)?trendActive.delete(t):trendActive.add(t); drawTrend(); };
+  drawTrend();
+}
+
+// ==================== BRANCH DETAIL TAB ====================
+function renderBranchDetail(bName) {
+  const bi = BRANCHES.indexOf(bName);
+  const color = BC[bi];
+  const el = document.getElementById('bd-' + bName);
+  const allRow = getAll(bName);
+  const svcRows = RAW.filter(r => r.branch === bName && r.type !== 'ALL');
+  const allRO = allRow.ro;
+
+  // Build KPI data
+  const br = RO_STATUS.byBranch[bName];
+  const prevRow = getPrevAll(bName);
+  const prevBr = PREV_RO.byBranch[bName];
+  const kpis = [
+    { l: "총 서비스 L/T", v: V(allRow.slt,1), u: U(), c:allRow.slt, p:prevRow?prevRow.slt:null },
+    { l: "예약 L/T", v: V(allRow.rlt,1), u: U(), c:allRow.rlt, p:prevRow?prevRow.rlt:null },
+    { l: "고객대기 L/T", v: V(allRow.clt,2), u: U(), c:allRow.clt, p:prevRow?prevRow.clt:null },
+    { l: "상담 L/T", v: V(allRow.colt,2), u: U(), c:allRow.colt, p:prevRow?prevRow.colt:null },
+    { l: "정비대기 L/T", v: V(allRow.wlt,1), u: U(), c:allRow.wlt, p:prevRow?prevRow.wlt:null },
+    { l: "정비 L/T", v: V(allRow.mlt,1), u: U(), c:allRow.mlt, p:prevRow?prevRow.mlt:null },
+    { l: "출고대기 L/T", v: V(allRow.dlt,2), u: U(), c:allRow.dlt, p:prevRow?prevRow.dlt:null },
+    { l: "정산 L/T", v: V(allRow.blt,1), u: U(), c:allRow.blt, p:prevRow?prevRow.blt:null },
+  ];
+
+  const roMomI = (label,c,p,goodUp) => {
+    const ch=mom(c,p); if(ch===null)return'';
+    const color = goodUp ? (ch>0?'var(--green)':ch<0?'var(--red)':'var(--text-muted)') : (ch<0?'var(--green)':ch>0?'var(--red)':'var(--text-muted)');
+    const arrow = ch>0?'▲':ch<0?'▼':'―';
+    const diff = c - p;
+    return `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+      <div style="font-size:10px;color:var(--text-muted);min-width:75px">${label}</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${color}">${arrow} ${ch>0?'+':''}${ch.toFixed(1)}% <span style="font-size:10px;font-weight:500">(${diff>0?'+':''}${FC(diff)})</span></div>
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:26px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:16px;height:16px;border-radius:4px;background:${color}"></div>
+        <h2 style="font-size:24px;font-weight:800">${bName} 지점</h2>
+        <span style="font-family:var(--mono);font-size:12px;color:var(--text-muted);margin-left:4px">AS_${bName}</span>
+      </div>
+      <div class="unit-toggle" onclick="toggleUnit()"><div class="unit-opt ${unitMode==='h'?'active':''} uopt-h">시간(h)</div><div class="unit-opt ${unitMode==='d'?'active':''} uopt-d">일(d)</div></div>
+    </div>
+    <div class="kpi-header">
+      <div class="kpi-header-title">리드타임 현황 <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:8px">vs 전월(${PREV_MONTH_LABEL})</span></div>
+    </div>
+    <div class="kpi-row">${kpis.map(k =>
+      `<div class="kpi-card" style="--accent:${color}"><div class="kpi-label">${k.l}</div><div><span class="kpi-value">${k.v}</span><span class="kpi-unit">${k.u}</span></div>${momHtml(k.c,k.p)}</div>`
+    ).join('')}</div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">RO 현황</div>
+      <div class="card-sub">서비스타입별 완료/미완료</div>
+      <div style="display:flex;gap:0;align-items:stretch;margin-bottom:12px">
+        <div style="flex:1;padding:4px 20px 4px 0">
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px">RO 건수</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-size:10px;color:var(--text-muted);min-width:75px">총 RO</div><div style="font-family:var(--mono);font-size:15px;font-weight:800;color:${color}">${FC(br.total)}</div></div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-size:10px;color:var(--text-muted);min-width:75px">인보이스 완료</div><div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--green)">${FC(br.invoiced)} <span style="font-size:10px;font-weight:500">(${(br.invoiced/br.total*100).toFixed(1)}%)</span></div></div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><div style="font-size:10px;color:var(--text-muted);min-width:75px">미완료 RO</div><div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--amber)">${FC(br.incomplete)} <span style="font-size:10px;font-weight:500">(${(br.incomplete/br.total*100).toFixed(1)}%)</span></div></div>
+          <div style="display:flex;align-items:baseline;gap:8px"><div style="font-size:10px;color:var(--text-muted);min-width:75px">RO 취소</div><div style="font-family:var(--mono);font-size:15px;font-weight:800;color:var(--red)">${FC(br.cancelled)} <span style="font-size:10px;font-weight:500">(${(br.cancelled/br.total*100).toFixed(1)}%)</span></div></div>
+        </div>
+        <div style="width:1px;background:var(--border);flex-shrink:0"></div>
+        <div style="flex:1;padding:4px 20px">
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px">전월대비 증감률</div>
+          ${roMomI('총 RO',br.total,prevBr?prevBr.total:null,true)}
+          ${roMomI('인보이스 완료',br.invoiced,prevBr?prevBr.invoiced:null,true)}
+          ${roMomI('미완료 RO',br.incomplete,prevBr?prevBr.incomplete:null,false)}
+          ${roMomI('RO 취소',br.cancelled,prevBr?prevBr.cancelled:null,false)}
+        </div>
+        <div style="width:1px;background:var(--border);flex-shrink:0"></div>
+        <div style="flex:1;padding:4px 0 4px 20px">
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px">미완료 상세 (${FC(br.incomplete)}건)</div>
+          ${(()=>{const bd=RO_STATUS.incByBranch[bName];return INC_LABELS.map((lbl,i)=>{const cnt=bd[lbl]||0;return cnt>0?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="display:flex;align-items:center;gap:4px;min-width:100px"><div style="width:6px;height:6px;border-radius:2px;background:${INC_COLORS[i]}"></div><div style="font-size:10px;color:var(--text-muted)">${lbl}</div></div><div style="font-family:var(--mono);font-size:13px;font-weight:700">${cnt}건</div></div>`:'';}).join('');})()}
+        </div>
+      </div>
+      <div class="chart-box" style="height:360px"><canvas id="c-rost-${bName}"></canvas></div>
+      <div style="overflow-x:auto;margin-top:18px"><table class="data-table" id="tbl-rost-${bName}"></table></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">서비스타입별 L/T 구성</div>
+        <div class="card-sub">예약 / 고객대기 / 상담 / 정비대기 / 정비 / 출고대기 / 정산 (${U()})</div>
+        <div class="chart-box" style="height:360px"><canvas id="c-svc-${bName}"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">서비스타입별 예약 L/T</div>
+        <div class="card-sub">예약 리드타임 분포 (${U()})</div>
+        <div class="chart-box" style="height:360px"><canvas id="c-rlt-${bName}"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">서비스타입별 상세 데이터</div>
+      <div class="card-sub">${bName} 지점 — 서비스타입별 L/T 비교</div>
+      <div class="filter-row" id="grp-filters-${bName}"></div>
+      <div class="chart-box" style="height:360px"><canvas id="c-grp-${bName}"></canvas></div>
+      <div style="overflow-x:auto;margin-top:18px"><table class="data-table" id="tbl-${bName}"></table></div>
+    </div>
+  `;
+
+  // Chart: Stacked bar by service type
+  const pal = ["#2563eb","#059669","#d97706","#7c3aed","#db2777","#0891b2","#dc2626","#ea580c"];
+  CI['svc'+bName] = new Chart(document.getElementById('c-svc-'+bName), {
+    type:'bar',
+    data:{
+      labels: svcRows.map(s=>s.type),
+      datasets:[
+        {label:'예약 L/T',data:svcRows.map(s=>cv(s.rlt)),backgroundColor:'#2563eb'},
+        {label:'고객대기 L/T',data:svcRows.map(s=>cv(s.clt)),backgroundColor:'#0891b2'},
+        {label:'상담 L/T',data:svcRows.map(s=>cv(s.colt)),backgroundColor:'#64748b'},
+        {label:'정비대기 L/T',data:svcRows.map(s=>cv(s.wlt)),backgroundColor:'#d97706'},
+        {label:'정비 L/T',data:svcRows.map(s=>cv(s.mlt)),backgroundColor:'#7c3aed'},
+        {label:'출고대기 L/T',data:svcRows.map(s=>cv(s.dlt)),backgroundColor:'#ea580c'},
+        {label:'정산 L/T',data:svcRows.map(s=>cv(s.blt)),backgroundColor:'#059669'},
+      ]
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{stacked:true,ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}},
+        y:{stacked:true,ticks:{color:'#64748b',font:{size:11}},grid:{display:false}}
+      },
+      plugins:{legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'rect',padding:10}},datalabels:DL_HSTACK}
+    }
+  });
+
+  // Chart: RO Status by service type (stacked horizontal bar)
+  const roStypes = ["Maintenance","Recall","경수리","중수리","소음","진단","사고수리","RITA"];
+  const roLabels = ["Maintenance","Recall/TC","경수리","중수리","소음","진단","사고수리","RITA"];
+  const bsData = RO_STATUS.byStype[bName];
+  const invData = roStypes.map(st => bsData[st] ? bsData[st].inv : 0);
+  const incData = roStypes.map(st => bsData[st] ? bsData[st].inc : 0);
+  CI['rost'+bName] = new Chart(document.getElementById('c-rost-'+bName), {
+    type:'bar',
+    data:{
+      labels: roLabels,
+      datasets:[
+        {label:'인보이스 완료',data:invData,backgroundColor:'#059669',borderRadius:0},
+        {label:'미완료',data:incData,backgroundColor:'#d97706',borderRadius:{topLeft:4,topRight:4}},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{stacked:true,ticks:{color:'#64748b',font:{size:10}},grid:{display:false}},
+        y:{stacked:true,ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}
+      },
+      plugins:{
+        legend:{labels:{color:'#64748b',font:{size:11},usePointStyle:true,pointStyle:'rect',padding:12}},
+        tooltip:{callbacks:{
+          label: ctx => {
+            const total = invData[ctx.dataIndex]+incData[ctx.dataIndex];
+            return ctx.dataset.label+': '+ctx.raw+'건 ('+(total?((ctx.raw/total)*100).toFixed(1):0)+'%)';
+          }
+        }},
+        datalabels:{display:ctx=>{const m=ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.dataIndex];return m&&Math.abs(m.base-m.y)>18;},color:'#fff',font:{size:10,weight:700},anchor:'center',align:'center',formatter:v=>v>0?v:''}
+      }
+    }
+  });
+
+  // RO Status Table (transposed - service types as columns)
+  const rostRows = roStypes.map((st,i) => {
+    const d = bsData[st] || {inv:0,inc:0};
+    return {label:roLabels[i], inv:d.inv, inc:d.inc, total:d.inv+d.inc};
+  });
+  const rostTot = {inv:invData.reduce((a,b)=>a+b,0), inc:incData.reduce((a,b)=>a+b,0)};
+  rostTot.total = rostTot.inv + rostTot.inc;
+  const tblEl = document.getElementById('tbl-rost-'+bName);
+  tblEl.innerHTML =
+    `<thead><tr><th style="min-width:80px"></th>${rostRows.map(r=>`<th>${r.label}</th>`).join('')}<th>합계</th></tr></thead><tbody>` +
+    `<tr><td>인보이스 완료</td>${rostRows.map(r=>`<td style="color:var(--green);font-weight:600">${FC(r.inv)}</td>`).join('')}<td style="color:var(--green);font-weight:700">${FC(rostTot.inv)}</td></tr>` +
+    `<tr><td>미완료</td>${rostRows.map(r=>`<td style="color:${r.inc>0?'var(--amber)':'var(--text-muted)'};font-weight:600">${FC(r.inc)}</td>`).join('')}<td style="color:var(--amber);font-weight:700">${FC(rostTot.inc)}</td></tr>` +
+    `<tr class="hl"><td>합계</td>${rostRows.map(r=>`<td style="font-weight:700">${FC(r.total)}</td>`).join('')}<td style="font-weight:700">${FC(rostTot.total)}</td></tr>` +
+    `<tr><td>완료율</td>${rostRows.map(r=>`<td>${r.total>0?(r.inv/r.total*100).toFixed(1)+'%':'-'}</td>`).join('')}<td style="font-weight:700">${rostTot.total>0?(rostTot.inv/rostTot.total*100).toFixed(1)+'%':'-'}</td></tr>` +
+    '</tbody>';
+
+  // Chart: Reservation L/T bar
+  CI['rlt'+bName] = new Chart(document.getElementById('c-rlt-'+bName), {
+    type:'bar',
+    data:{
+      labels: svcRows.map(s=>s.type),
+      datasets:[{
+        label:'예약 L/T',
+        data:svcRows.map(s=>cv(s.rlt)),
+        backgroundColor:svcRows.map((_,i)=>pal[i%pal.length]),
+        borderRadius:6, barThickness:24
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{ticks:{color:'#64748b',font:{size:10},maxRotation:40},grid:{display:false}},
+        y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}
+      },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>F(ctx.raw,1)+' '+U()}}}
+    }
+  });
+
+  // Grouped bar chart with filter buttons
+  const grpTypes = [allRow, ...svcRows];
+  const grpLabels = grpTypes.map(s => s.type);
+  const grpColors = ['#1a4fa0','#3b7dd8','#7baaf0','#a8c8f0','#d0e2f8'];
+  const grpFields = [
+    {k:'slt',l:'총서비스 L/T',c:grpColors[0]},
+    {k:'rlt',l:'예약 L/T',c:grpColors[1]},
+    {k:'wlt',l:'정비대기 L/T',c:grpColors[2]},
+    {k:'mlt',l:'정비 L/T',c:grpColors[3]},
+    {k:'blt',l:'정산 L/T',c:grpColors[4]},
+  ];
+  const grpActive = {[bName]: new Set(grpFields.map(f=>f.k))};
+  function drawGrp(bn) {
+    const filEl = document.getElementById('grp-filters-'+bn);
+    filEl.innerHTML = `<button class="filter-btn ${grpActive[bn].size===grpFields.length?'active':''}" onclick="window._gf('${bn}','ALL')" style="font-weight:700">전체</button>` +
+      grpFields.map(f =>
+        `<button class="filter-btn ${grpActive[bn].has(f.k)?'active':''}" onclick="window._gf('${bn}','${f.k}')" style="border-left:3px solid ${f.c}">${f.l}</button>`
+      ).join('');
+    DC('grp'+bn);
+    const activeF = grpFields.filter(f => grpActive[bn].has(f.k));
+    CI['grp'+bn] = new Chart(document.getElementById('c-grp-'+bn), {
+      type:'bar',
+      data:{
+        labels:grpLabels,
+        datasets:activeF.map(f => ({
+          label:f.l,
+          data:grpTypes.map(s=>cv(s[f.k])),
+          backgroundColor:f.c,
+          borderRadius:2,
+        }))
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ticks:{color:'#475569',font:{size:11}},grid:{display:false}},
+          y:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#e2e8f0'}}
+        },
+        plugins:{
+          legend:{display:false},
+          datalabels:{
+            display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,
+            color:'#475569',
+            font:{size:8,weight:600},
+            anchor:'end', align:'top', offset:1,
+            rotation: activeF.length > 2 ? -90 : 0,
+            formatter:v=>v>0?F(v,2)+' '+UU():''
+          }
+        }
+      }
+    });
+  }
+  window._gf = (bn, key) => {
+    if(key === 'ALL') {
+      if(grpActive[bn].size === grpFields.length) return;
+      grpActive[bn] = new Set(grpFields.map(f=>f.k));
+    } else {
+      if(grpActive[bn].has(key) && grpActive[bn].size > 1) {
+        grpActive[bn].delete(key);
+      } else if(!grpActive[bn].has(key)) {
+        grpActive[bn].add(key);
+      }
+    }
+    drawGrp(bn);
+  };
+  drawGrp(bName);
+
+  // Table
+  const heads = ["서비스타입","RO건수","서비스L/T","예약L/T","고객대기","상담","정비대기","정비L/T","출고대기","정산L/T"];
+  const allRows = [allRow, ...svcRows];
+  document.getElementById('tbl-'+bName).innerHTML =
+    `<thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>` +
+    allRows.map(r => {
+      const isAll = r.type === 'ALL';
+      return `<tr class="${isAll?'hl':''}">
+        <td style="font-weight:${isAll?700:500};color:${isAll?color:'var(--text)'}">${r.type}</td>
+        <td>${FC(r.ro)}</td>
+        <td style="font-weight:${isAll?700:400}">${V(r.slt)}</td>
+        <td>${V(r.rlt)}</td><td>${V(r.clt,2)}</td><td>${V(r.colt,2)}</td>
+        <td>${V(r.wlt)}</td><td>${V(r.mlt)}</td><td>${V(r.dlt,2)}</td><td>${V(r.blt)}</td></tr>`;
+    }).join('') + '</tbody>';
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', () => { renderOverview(); });
+</script>
+</body>
+</html>
