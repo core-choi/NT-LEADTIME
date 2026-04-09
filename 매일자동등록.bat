@@ -1,33 +1,28 @@
 @echo off
-chcp 65001 >nul 2>&1
-title NT Dashboard - Daily Schedule
+cd /d "%~dp0"
 
 echo.
 echo =========================================================
-echo   Register daily auto-upload (9:00 AM)
+echo   Register daily auto-upload at 9:00 AM
 echo =========================================================
 echo.
 
-set "REPO_DIR=%~dp0"
-set "AUTO_BAT=%~dp0auto_upload.bat"
+set "AUTOBAT=%~dp0auto_run.bat"
 
-(
-echo @echo off
-echo cd /d "%REPO_DIR%"
-echo if not exist ".git" exit /b 0
-echo git pull origin main --quiet 2^>nul
-echo git add data/ -A
-echo git diff --cached --quiet ^|^| ^( git commit -m "auto update %%date%% %%time:~0,5%%" --quiet ^& git push origin main --quiet ^)
-) > "%AUTO_BAT%"
+echo @echo off > "%AUTOBAT%"
+echo cd /d "%~dp0" >> "%AUTOBAT%"
+echo if not exist ".git" exit /b 0 >> "%AUTOBAT%"
+echo git add -A >> "%AUTOBAT%"
+echo git diff --cached --quiet ^|^| ( git commit -m "auto %%date%% %%time:~0,5%%" --quiet ^& git push origin main --quiet ) >> "%AUTOBAT%"
 
-schtasks /create /tn "NT_Dashboard_Upload" /tr "\"%AUTO_BAT%\"" /sc daily /st 09:00 /f
+schtasks /create /tn "NT_Dashboard" /tr "\"%AUTOBAT%\"" /sc daily /st 09:00 /f
 
-if errorlevel 1 (
-    echo [ERROR] Failed! Right-click and Run as Administrator.
-) else (
-    echo [OK] Daily 9:00 AM auto-upload registered!
+if %errorlevel%==0 (
+    echo [OK] Daily 9:00 AM upload registered!
     echo.
-    echo   To remove: schtasks /delete /tn "NT_Dashboard_Upload" /f
+    echo   To remove: schtasks /delete /tn "NT_Dashboard" /f
+) else (
+    echo [ERROR] Failed. Right-click, Run as Administrator.
 )
 
 echo.
