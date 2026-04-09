@@ -314,7 +314,18 @@ def build():
         trend_year = datetime.now().year - 1
         html = re.sub(r'\d{4}년 서비스타입별 총서비스 L/T 월간 변화', f'{trend_year}년 서비스타입별 총서비스 L/T 월간 변화', html)
 
-    html = re.sub(r'<span>\d{4}-\d{2}-\d{2} \d{2}:\d{2} 기준</span>', f'<span>{curr_ro["updateDate"]} 기준</span>', html)
+    # Build timestamp (KST = UTC+9)
+    from datetime import timedelta, timezone
+    kst = timezone(timedelta(hours=9))
+    build_time = datetime.now(kst).strftime('%Y-%m-%d %H:%M')
+
+    # Handle both old and new template format
+    html = html.replace('BUILD_TIMESTAMP', build_time)
+    html = re.sub(
+        r'<span>\d{4}-\d{2}-\d{2} \d{2}:\d{2} [^<]*</span>',
+        f'<span>{build_time} 업데이트</span>',
+        html, count=1
+    )
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
