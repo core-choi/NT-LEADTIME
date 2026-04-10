@@ -356,6 +356,11 @@ def build():
     html = re.sub(r'const PREV_RO = \{.*?\n\};', js_prev_ro, html, count=1, flags=re.DOTALL)
     html = re.sub(r'const PREV_MONTH_LABEL = ".*?";', f'const PREV_MONTH_LABEL = "{prev_month_label}";', html, count=1)
 
+    # Current month label
+    current_month_label = f'{current[1]}월'
+    html = re.sub(r'const CURRENT_MONTH_LABEL = ".*?";', f'const CURRENT_MONTH_LABEL = "{current_month_label}";', html, count=1)
+    log(f'  Current label: {current_month_label}')
+
     if has_trend:
         js_trend = trend_to_js(stype_monthly)
         html = re.sub(r'const TREND_DATA = \{.*?\n\};', js_trend, html, count=1, flags=re.DOTALL)
