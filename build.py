@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NT 서비스센터 - 리드타임 대시보드 자동 빌드
-GitHub Actions 및 로컬 실행 모두 지원
+NT Service Center - Lead Time Dashboard Builder
+
+Folder structure:
+  data/
+    2025/01~12/   (each: 서비스_리드타임_현황.xlsx, RoReport.xlsx)
+    2026/01~12/
+    ...
+
+Auto-detects: latest month = current, previous month = prev, prev year = trend
 """
 
 import pandas as pd
 import re
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
-# Windows 콘솔 UTF-8
 if sys.platform == 'win32':
     try:
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
-    try:
-        os.system('chcp 65001 >nul 2>&1')
-    except Exception:
-        pass
 
 CI_MODE = '--ci' in sys.argv
+KST = timezone(timedelta(hours=9))
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-PREV_DIR = os.path.join(BASE, 'data', '전월')
-CURR_DIR = os.path.join(BASE, 'data', '현월')
-YEAR_DIR = os.path.join(BASE, 'data', '전년')
+DATA_DIR = os.path.join(BASE, 'data')
 OUTPUT_DIR = os.path.join(BASE, 'output')
 TEMPLATE = os.path.join(BASE, 'template.html')
 
@@ -46,50 +47,90 @@ def log(msg):
         print(msg.encode('ascii', 'replace').decode('ascii'))
 
 
-def check_environment():
-    log('\n--- 환경 진단 ---')
-    log(f'  build.py 위치: {BASE}')
-    log(f'  template.html: {"있음" if os.path.exists(TEMPLATE) else "없음 !!!"}')
-    log(f'  data 폴더: {"있음" if os.path.exists(os.path.join(BASE, "data")) else "없음 !!!"}')
-    for name, path in [('현월', CURR_DIR), ('전월', PREV_DIR), ('전년', YEAR_DIR)]:
-        exists = os.path.exists(path)
-        log(f'  data/{name}/: {"있음" if exists else "없음"}')
-        if exists:
-            files = [f for f in os.listdir(path) if not f.startswith('.')]
-            if files:
-                for f in files:
-                    log(f'    - {f}')
-            else:
-                log(f'    (비어있음)')
-    log('--- 진단 끝 ---\n')
+# ============================================================
+# Data discovery - find all year/month folders with data
+# ============================================================
+def find_all_months(data_dir):
+    """Scan data/ for year/month folders, return sorted list of (year, month, path)"""
+    results = []
+    if not os.path.exists(data_dir):
+        return results
+    for year_name in sorted(os.listdir(data_dir)):
+        year_path = os.path.join(data_dir, year_name)
+        if not os.path.isdir(year_path):
+            continue
+        try:
+            year = int(year_name)
+        except ValueError:
+            continue
+        for month_name in sorted(os.listdir(year_path)):
+            month_path = os.path.join(year_path, month_name)
+            if not os.path.isdir(month_path):
+                continue
+            try:
+                month = int(month_name)
+                if month < 1 or month > 12:
+                    continue
+            except ValueError:
+                continue
+            # Check if folder has xlsx files
+            has_lt = any('리드타임' in f or '서비스_리드타임' in f for f in os.listdir(month_path) if f.endswith('.xlsx'))
+            has_ro = any('ro' in f.lower() and f.endswith('.xlsx') for f in os.listdir(month_path))
+            if has_lt or has_ro:
+                results.append((year, month, month_path))
+    return results
 
 
-def read_lt(folder):
-    path = os.path.join(folder, '서비스_리드타임_현황.xlsx')
-    if not os.path.exists(path):
-        if os.path.exists(folder):
-            for f in os.listdir(folder):
-                if '리드타임' in f and f.endswith('.xlsx'):
-                    return pd.read_excel(os.path.join(folder, f))
+def find_current_and_prev(all_months):
+    """From sorted month list, find current (latest) and previous"""
+    if not all_months:
+        return None, None
+    current = all_months[-1]  # latest
+    prev = all_months[-2] if len(all_months) >= 2 else None
+    return current, prev
+
+
+def find_trend_year(all_months, current):
+    """Find 12 months of data for trend (previous year of current)"""
+    if not current:
         return None
-    return pd.read_excel(path)
+    target_year = current[0] - 1
+    trend_months = [m for m in all_months if m[0] == target_year]
+    if trend_months:
+        return target_year
+    # Also check current year (for partial year trend)
+    curr_months = [m for m in all_months if m[0] == current[0]]
+    if len(curr_months) >= 2:
+        return current[0]
+    return None
+
+
+# ============================================================
+# File readers
+# ============================================================
+def read_lt(folder):
+    if not os.path.exists(folder):
+        return None
+    for f in os.listdir(folder):
+        if ('리드타임' in f or '서비스_리드타임' in f) and f.endswith('.xlsx') and not f.startswith('~$'):
+            return pd.read_excel(os.path.join(folder, f))
+    return None
 
 
 def read_ro(folder):
-    path = os.path.join(folder, 'RoReport.xlsx')
-    if not os.path.exists(path):
-        if os.path.exists(folder):
-            for f in os.listdir(folder):
-                if 'ro' in f.lower() and f.endswith('.xlsx'):
-                    df = pd.read_excel(os.path.join(folder, f), header=1)
-                    df.columns = df.columns.str.strip()
-                    return df
+    if not os.path.exists(folder):
         return None
-    df = pd.read_excel(path, header=1)
-    df.columns = df.columns.str.strip()
-    return df
+    for f in os.listdir(folder):
+        if 'ro' in f.lower() and f.endswith('.xlsx') and not f.startswith('~$'):
+            df = pd.read_excel(os.path.join(folder, f), header=1)
+            df.columns = df.columns.str.strip()
+            return df
+    return None
 
 
+# ============================================================
+# Data processing
+# ============================================================
 def process_lt_to_js(df):
     lines = []
     for _, r in df.iterrows():
@@ -113,9 +154,7 @@ def process_ro(df):
     by_branch = {}
     for b in BRANCHES:
         bdf = df[df['AS지점'].astype(str).str.replace('AS_', '', regex=False) == b]
-        bt = len(bdf)
-        bi = len(bdf[bdf['RO상태'] == '인보이스 완료'])
-        bc = len(bdf[bdf['RO상태'] == 'RO취소'])
+        bt = len(bdf); bi = len(bdf[bdf['RO상태'] == '인보이스 완료']); bc = len(bdf[bdf['RO상태'] == 'RO취소'])
         by_branch[b] = {'total': bt, 'invoiced': bi, 'cancelled': bc, 'incomplete': bt - bi - bc}
     inc_df = df[(df['RO상태'] != '인보이스 완료') & (df['RO상태'] != 'RO취소')]
     inc_detail = {}
@@ -142,7 +181,7 @@ def process_ro(df):
             bs[st] = {'inv': inv, 'inc': len(sdf) - inv}
         by_stype[b] = bs
     max_date = pd.to_datetime(df['RO갱신일시'], errors='coerce').max()
-    update_str = max_date.strftime('%Y-%m-%d %H:%M') if pd.notna(max_date) else datetime.now().strftime('%Y-%m-%d %H:%M')
+    update_str = max_date.strftime('%Y-%m-%d %H:%M') if pd.notna(max_date) else datetime.now(KST).strftime('%Y-%m-%d %H:%M')
     return {
         'total': total, 'invoiced': invoiced, 'cancelled': cancelled,
         'incomplete': incomplete, 'incDetail': inc_detail,
@@ -156,60 +195,47 @@ def ro_to_js(ro_data, var_name='RO_STATUS'):
     lines.append(f'  total:{ro_data["total"]},invoiced:{ro_data["invoiced"]},cancelled:{ro_data["cancelled"]},incomplete:{ro_data["incomplete"]},')
     inc_parts = ','.join(f'"{k}":{v}' for k, v in ro_data['incDetail'].items())
     lines.append(f'  incDetail:{{{inc_parts}}},')
-    bb_parts = []
+    bb = []
     for b in BRANCHES:
-        d = ro_data['byBranch'].get(b, {'total': 0, 'invoiced': 0, 'cancelled': 0, 'incomplete': 0})
-        bb_parts.append(f'    "{b}":{{total:{d["total"]},invoiced:{d["invoiced"]},cancelled:{d["cancelled"]},incomplete:{d["incomplete"]}}}')
-    lines.append('  byBranch:{\n' + ',\n'.join(bb_parts) + '\n  },')
-    ib_parts = []
+        d = ro_data['byBranch'].get(b, {'total':0,'invoiced':0,'cancelled':0,'incomplete':0})
+        bb.append(f'    "{b}":{{total:{d["total"]},invoiced:{d["invoiced"]},cancelled:{d["cancelled"]},incomplete:{d["incomplete"]}}}')
+    lines.append('  byBranch:{\n' + ',\n'.join(bb) + '\n  },')
+    ib = []
     for b in BRANCHES:
         bd = ro_data['incByBranch'].get(b, {})
-        items = ','.join(f'"{k}":{bd.get(k, 0)}' for k in INC_LABELS)
-        ib_parts.append(f'    "{b}":{{{items}}}')
-    lines.append('  incByBranch:{\n' + ',\n'.join(ib_parts) + '\n  },')
-    bs_parts = []
+        items = ','.join(f'"{k}":{bd.get(k,0)}' for k in INC_LABELS)
+        ib.append(f'    "{b}":{{{items}}}')
+    lines.append('  incByBranch:{\n' + ',\n'.join(ib) + '\n  },')
+    bs = []
     for b in BRANCHES:
         bd = ro_data['byStype'].get(b, {})
-        items = ','.join(f'{k}:{{inv:{bd.get(k, {}).get("inv", 0)},inc:{bd.get(k, {}).get("inc", 0)}}}' for k in RO_STYPES)
-        bs_parts.append(f'    "{b}":{{{items}}}')
-    lines.append('  byStype:{\n' + ',\n'.join(bs_parts) + '\n  }')
+        items = ','.join(f'{k}:{{inv:{bd.get(k,{}).get("inv",0)},inc:{bd.get(k,{}).get("inc",0)}}}' for k in RO_STYPES)
+        bs.append(f'    "{b}":{{{items}}}')
+    lines.append('  byStype:{\n' + ',\n'.join(bs) + '\n  }')
     lines.append('\n};')
     return '\n'.join(lines)
 
 
-def process_yearly_trend(year_dir):
+def process_yearly_trend(data_dir, year):
     stype_monthly = {st: [None]*12 for st in STYPES}
-    found_months = []
+    found = []
     for mi in range(12):
         m = f'{mi+1:02d}'
-        lt_path = os.path.join(year_dir, m, '서비스_리드타임_현황.xlsx')
-        if not os.path.exists(lt_path):
-            m_dir = os.path.join(year_dir, m)
-            if os.path.exists(m_dir):
-                for f in os.listdir(m_dir):
-                    if '리드타임' in f and f.endswith('.xlsx'):
-                        lt_path = os.path.join(m_dir, f)
-                        break
-                else:
-                    continue
-            else:
-                continue
-        found_months.append(m)
-        df = pd.read_excel(lt_path)
+        m_path = os.path.join(data_dir, str(year), m)
+        lt = read_lt(m_path)
+        if lt is None:
+            continue
+        found.append(m)
         for st in STYPES:
-            mapped_types = [st]
-            for orig, mapped in STYPE_MAP.items():
-                if mapped == st:
-                    mapped_types.append(orig)
-            rows = df[df['서비스타입'].isin(mapped_types)]
+            mapped = [st] + [k for k, v in STYPE_MAP.items() if v == st]
+            rows = lt[lt['서비스타입'].isin(mapped)]
             if len(rows) == 0:
                 continue
             total_ro = rows['RO건수'].sum()
             if total_ro == 0:
                 continue
-            wavg_slt = (rows['서비스L/T'] * rows['RO건수']).sum() / total_ro / 24
-            stype_monthly[st][mi] = round(wavg_slt, 2)
-    return stype_monthly, found_months
+            stype_monthly[st][mi] = round((rows['서비스L/T'] * rows['RO건수']).sum() / total_ro / 24, 2)
+    return stype_monthly, found
 
 
 def trend_to_js(stype_monthly):
@@ -217,64 +243,84 @@ def trend_to_js(stype_monthly):
     lines.append('  months:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],')
     lines.append('  series:[')
     for st in STYPES:
-        vals = stype_monthly[st]
-        val_str = ','.join('null' if v is None else str(v) for v in vals)
-        lines.append(f'    {{type:"{st}",v:[{val_str}]}},')
+        vals = ','.join('null' if v is None else str(v) for v in stype_monthly[st])
+        lines.append(f'    {{type:"{st}",v:[{vals}]}},')
     lines.append('  ]')
     lines.append('\n};')
     return '\n'.join(lines)
 
 
-def extract_prev_month(prev_ro_df):
-    for col in ['RO발행일시', 'RO갱신일시', '차량접수일시', '예약일시']:
-        if col in prev_ro_df.columns:
-            try:
-                dates = pd.to_datetime(prev_ro_df[col], errors='coerce').dropna()
-                if len(dates) > 0:
-                    month_num = dates.dt.month.mode()
-                    if len(month_num) > 0:
-                        return f'{int(month_num.iloc[0])}월'
-            except Exception:
-                continue
-    return '전월'
-
-
+# ============================================================
+# Main build
+# ============================================================
 def build():
     log('=' * 55)
-    log('  NT 서비스센터 - 리드타임 대시보드 빌드')
+    log('  NT Dashboard - Auto Build')
     log('=' * 55)
-    check_environment()
 
     if not os.path.exists(TEMPLATE):
-        log(f'[ERROR] template.html이 없습니다: {TEMPLATE}')
+        log(f'\n[ERROR] template.html not found: {TEMPLATE}')
         return False
 
-    curr_lt = read_lt(CURR_DIR)
-    curr_ro_df = read_ro(CURR_DIR)
-    if curr_lt is None or curr_ro_df is None:
-        log(f'[ERROR] 현월 데이터가 없습니다! 폴더: {CURR_DIR}')
-        return False
-    log(f'[OK] 현월: L/T {len(curr_lt)}행, RO {len(curr_ro_df)}행')
+    # Discover data
+    log('\n--- Scanning data folders ---')
+    all_months = find_all_months(DATA_DIR)
 
-    prev_lt = read_lt(PREV_DIR)
-    prev_ro_df = read_ro(PREV_DIR)
-    has_prev = prev_lt is not None and prev_ro_df is not None
-    if has_prev:
-        log(f'[OK] 전월: L/T {len(prev_lt)}행, RO {len(prev_ro_df)}행')
+    if not all_months:
+        log('[ERROR] No data found in data/ folder!')
+        log(f'  Expected: data/2026/03/ with xlsx files')
+        return False
+
+    for y, m, p in all_months:
+        files = [f for f in os.listdir(p) if f.endswith('.xlsx') and not f.startswith('~$')]
+        log(f'  {y}/{m:02d}: {", ".join(files)}')
+
+    # Determine current and previous
+    current, prev = find_current_and_prev(all_months)
+    log(f'\n  >> Current: {current[0]}/{current[1]:02d}')
+    if prev:
+        log(f'  >> Previous: {prev[0]}/{prev[1]:02d}')
     else:
-        log(f'[WARN] 전월 데이터 없음')
+        log(f'  >> Previous: none')
 
-    has_year = os.path.exists(YEAR_DIR)
-    found_months = []
-    if has_year:
-        stype_monthly, found_months = process_yearly_trend(YEAR_DIR)
-        if found_months:
-            log(f'[OK] 전년 트렌드: {len(found_months)}개월')
+    # Read current month
+    curr_lt = read_lt(current[2])
+    curr_ro_df = read_ro(current[2])
+    if curr_lt is None or curr_ro_df is None:
+        log(f'[ERROR] Current month data incomplete: {current[2]}')
+        if curr_lt is None:
+            log(f'  Missing: 서비스_리드타임_현황.xlsx')
+        if curr_ro_df is None:
+            log(f'  Missing: RoReport.xlsx')
+        return False
+    log(f'\n[OK] Current ({current[0]}/{current[1]:02d}): LT {len(curr_lt)} rows, RO {len(curr_ro_df)} rows')
+
+    # Read previous month
+    has_prev = False
+    prev_lt = None
+    prev_ro_df = None
+    if prev:
+        prev_lt = read_lt(prev[2])
+        prev_ro_df = read_ro(prev[2])
+        has_prev = prev_lt is not None and prev_ro_df is not None
+        if has_prev:
+            log(f'[OK] Previous ({prev[0]}/{prev[1]:02d}): LT {len(prev_lt)} rows, RO {len(prev_ro_df)} rows')
         else:
-            has_year = False
+            log(f'[WARN] Previous month data incomplete')
 
+    # Trend year
+    trend_year = find_trend_year(all_months, current)
+    has_trend = False
+    found_trend = []
+    if trend_year:
+        stype_monthly, found_trend = process_yearly_trend(DATA_DIR, trend_year)
+        has_trend = len(found_trend) > 0
+        if has_trend:
+            log(f'[OK] Trend ({trend_year}): {len(found_trend)} months')
+
+    # Process
     curr_ro = process_ro(curr_ro_df)
-    log(f'[DATA] RO: 총 {curr_ro["total"]}건, 완료 {curr_ro["invoiced"]}건')
+    log(f'\n[DATA] RO: total {curr_ro["total"]}, done {curr_ro["invoiced"]}, pending {curr_ro["incomplete"]}')
 
     js_raw = f'const RAW = {process_lt_to_js(curr_lt)};'
     js_ro = ro_to_js(curr_ro, 'RO_STATUS')
@@ -282,65 +328,56 @@ def build():
     if has_prev:
         prev_ro = process_ro(prev_ro_df)
         js_prev_raw = f'const PREV_RAW = {process_lt_to_js(prev_lt)};'
-        bb_parts = []
+        bb = []
         for b in BRANCHES:
-            d = prev_ro['byBranch'].get(b, {'total': 0, 'invoiced': 0, 'cancelled': 0, 'incomplete': 0})
-            bb_parts.append(f'    "{b}":{{total:{d["total"]},invoiced:{d["invoiced"]},cancelled:{d["cancelled"]},incomplete:{d["incomplete"]}}}')
+            d = prev_ro['byBranch'].get(b, {'total':0,'invoiced':0,'cancelled':0,'incomplete':0})
+            bb.append(f'    "{b}":{{total:{d["total"]},invoiced:{d["invoiced"]},cancelled:{d["cancelled"]},incomplete:{d["incomplete"]}}}')
         js_prev_ro = (
             f'const PREV_RO = {{\n'
             f'  total:{prev_ro["total"]},invoiced:{prev_ro["invoiced"]},'
             f'cancelled:{prev_ro["cancelled"]},incomplete:{prev_ro["incomplete"]},\n'
-            f'  byBranch:{{\n' + ',\n'.join(bb_parts) + '\n  }\n};'
+            f'  byBranch:{{\n' + ',\n'.join(bb) + '\n  }\n};'
         )
-        prev_month_label = extract_prev_month(prev_ro_df)
-        log(f'   전월 기준: {prev_month_label}')
+        prev_month_label = f'{prev[1]}월'
+        log(f'  Previous label: {prev_month_label}')
     else:
         js_prev_raw = 'const PREV_RAW = [];'
         js_prev_ro = 'const PREV_RO = {\n  total:0,invoiced:0,cancelled:0,incomplete:0,\n  byBranch:{}\n};'
         prev_month_label = '전월'
 
+    # Read template
     with open(TEMPLATE, 'r', encoding='utf-8') as f:
         html = f.read()
 
+    # Replace data
     html = re.sub(r'const RAW = \[.*?\];', js_raw, html, count=1, flags=re.DOTALL)
     html = re.sub(r'const PREV_RAW = \[.*?\];', js_prev_raw, html, count=1, flags=re.DOTALL)
     html = re.sub(r'const RO_STATUS = \{.*?\n\};', js_ro, html, count=1, flags=re.DOTALL)
     html = re.sub(r'const PREV_RO = \{.*?\n\};', js_prev_ro, html, count=1, flags=re.DOTALL)
     html = re.sub(r'const PREV_MONTH_LABEL = ".*?";', f'const PREV_MONTH_LABEL = "{prev_month_label}";', html, count=1)
 
-    if has_year and found_months:
+    if has_trend:
         js_trend = trend_to_js(stype_monthly)
         html = re.sub(r'const TREND_DATA = \{.*?\n\};', js_trend, html, count=1, flags=re.DOTALL)
-        trend_year = datetime.now().year - 1
         html = re.sub(r'\d{4}년 서비스타입별 총서비스 L/T 월간 변화', f'{trend_year}년 서비스타입별 총서비스 L/T 월간 변화', html)
 
-    # Build timestamp (KST = UTC+9)
-    from datetime import timedelta, timezone
-    kst = timezone(timedelta(hours=9))
-    build_time = datetime.now(kst).strftime('%Y-%m-%d %H:%M')
-
-    # Handle both old and new template format
+    # Build timestamp (KST)
+    build_time = datetime.now(KST).strftime('%Y-%m-%d %H:%M')
     html = html.replace('BUILD_TIMESTAMP', build_time)
-    html = re.sub(
-        r'<span>\d{4}-\d{2}-\d{2} \d{2}:\d{2} [^<]*</span>',
-        f'<span>{build_time} 업데이트</span>',
-        html, count=1
-    )
+    html = re.sub(r'<span>\d{4}-\d{2}-\d{2} \d{2}:\d{2} [^<]*</span>', f'<span>{build_time} 업데이트</span>', html, count=1)
 
+    # Output
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    for name in ['index.html', '서비스_리드타임_대시보드.html']:
+        with open(os.path.join(OUTPUT_DIR, name), 'w', encoding='utf-8') as f:
+            f.write(html)
 
-    # GitHub Pages용 index.html + 로컬용 대시보드.html 둘 다 생성
-    index_path = os.path.join(OUTPUT_DIR, 'index.html')
-    with open(index_path, 'w', encoding='utf-8') as f:
-        f.write(html)
-
-    dash_path = os.path.join(OUTPUT_DIR, '서비스_리드타임_대시보드.html')
-    with open(dash_path, 'w', encoding='utf-8') as f:
-        f.write(html)
-
-    log(f'\n[OK] 대시보드 생성 완료!')
-    log(f'   - {index_path}')
-    log(f'   - {dash_path}')
+    log(f'\n[OK] Build complete!')
+    log(f'  Current: {current[0]}/{current[1]:02d}')
+    if has_prev:
+        log(f'  vs Prev:  {prev[0]}/{prev[1]:02d}')
+    log(f'  Time: {build_time} KST')
+    log(f'  Output: {OUTPUT_DIR}')
     log('=' * 55)
     return True
 
@@ -349,22 +386,14 @@ if __name__ == '__main__':
     try:
         success = build()
         if not success:
-            log('\n[HELP] 올바른 폴더 구조:')
-            log('  build.py 와 같은 폴더에:')
-            log('  +-- template.html')
-            log('  +-- data/')
-            log('      +-- 현월/ (서비스_리드타임_현황.xlsx, RoReport.xlsx)')
-            log('      +-- 전월/ (서비스_리드타임_현황.xlsx, RoReport.xlsx)')
-            log('      +-- 전년/01~12/ (월별 서비스_리드타임_현황.xlsx)')
-            if not CI_MODE:
-                sys.exit(1)
+            log('\n[HELP] Expected folder structure:')
+            log('  data/')
+            log('    2025/01~12/  (서비스_리드타임_현황.xlsx, RoReport.xlsx)')
+            log('    2026/01~12/')
     except Exception as e:
-        log(f'\n[ERROR] 빌드 실패: {e}')
+        log(f'\n[ERROR] Build failed: {e}')
         import traceback
         traceback.print_exc()
-        if not CI_MODE:
-            input('\n엔터를 누르면 종료합니다...')
-        sys.exit(1)
 
     if not CI_MODE:
-        input('\n엔터를 누르면 종료합니다...')
+        input('\nPress Enter to close...')
