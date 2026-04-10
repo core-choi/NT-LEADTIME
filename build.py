@@ -308,15 +308,21 @@ def build():
         else:
             log(f'[WARN] Previous month data incomplete')
 
-    # Trend year
-    trend_year = find_trend_year(all_months, current)
-    has_trend = False
-    found_trend = []
-    if trend_year:
-        stype_monthly, found_trend = process_yearly_trend(DATA_DIR, trend_year)
-        has_trend = len(found_trend) > 0
-        if has_trend:
-            log(f'[OK] Trend ({trend_year}): {len(found_trend)} months')
+    # Trend years (prev year = 2025, current year = 2026)
+    curr_year = current[0]
+    prev_year = curr_year - 1
+
+    # Previous year trend (TREND_DATA = 2025)
+    stype_prev, found_prev_trend = process_yearly_trend(DATA_DIR, prev_year)
+    has_prev_trend = len(found_prev_trend) > 0
+    if has_prev_trend:
+        log(f'[OK] Trend {prev_year}: {len(found_prev_trend)} months')
+
+    # Current year trend (TREND_DATA_CURR = 2026)
+    stype_curr_trend, found_curr_trend = process_yearly_trend(DATA_DIR, curr_year)
+    has_curr_trend = len(found_curr_trend) > 0
+    if has_curr_trend:
+        log(f'[OK] Trend {curr_year}: {len(found_curr_trend)} months')
 
     # Process
     curr_ro = process_ro(curr_ro_df)
@@ -361,10 +367,16 @@ def build():
     html = re.sub(r'const CURRENT_MONTH_LABEL = ".*?";', f'const CURRENT_MONTH_LABEL = "{current_month_label}";', html, count=1)
     log(f'  Current label: {current_month_label}')
 
-    if has_trend:
-        js_trend = trend_to_js(stype_monthly)
+    if has_prev_trend:
+        js_trend = trend_to_js(stype_prev)
         html = re.sub(r'const TREND_DATA = \{.*?\n\};', js_trend, html, count=1, flags=re.DOTALL)
-        html = re.sub(r'\d{4}년 서비스타입별 총서비스 L/T 월간 변화', f'{trend_year}년 서비스타입별 총서비스 L/T 월간 변화', html)
+
+    if has_curr_trend:
+        js_trend_curr = trend_to_js(stype_curr_trend).replace('const TREND_DATA', 'const TREND_DATA_CURR')
+        html = re.sub(r'const TREND_DATA_CURR = \{.*?\n\};', js_trend_curr, html, count=1, flags=re.DOTALL)
+
+    # Update subtitle with years
+    html = re.sub(r'\d{4}년 vs \d{4}년', f'{prev_year}년 vs {curr_year}년', html)
 
     # Build timestamp (KST)
     build_time = datetime.now(KST).strftime('%Y-%m-%d %H:%M')
